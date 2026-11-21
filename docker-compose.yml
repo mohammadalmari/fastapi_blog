@@ -16,6 +16,9 @@ services:
       # the member's own name, localhost:27017, meaning this container.
       # Transactions still work.
       DATABASE_URL: mongodb://mongo:27017/?directConnection=true
+      # Set here so that a TEST_DATABASE_URL in a mounted .env, which points at
+      # the host's localhost, doesn't apply inside the container.
+      TEST_DATABASE_URL: mongodb://mongo:27017/?directConnection=true
     volumes:
       # The project is mounted over the image's app directory, so edits on the
       # host reload the server. A .env file, if present, is read from here.

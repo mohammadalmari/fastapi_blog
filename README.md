@@ -98,8 +98,9 @@ uv run ty check            # type check
 uv run pytest              # tests
 ```
 
-The tests need a reachable MongoDB replica set: the one from
-`docker compose up -d --wait mongo`, or whatever a `DATABASE_URL` environment
-variable points at (the tests ignore `.env`). They use a database with a
-random name and drop it afterwards, so they never touch your development
-data.
+The tests need a reachable MongoDB replica set. They connect to
+`TEST_DATABASE_URL` if it is set, otherwise to `DATABASE_URL`, otherwise to
+the Compose database on `localhost:27017`; both variables can be in `.env` or
+the shell. On that server they use a database with a random name and drop it
+afterwards, so they never touch your development data and can safely share
+its server. The user in the URL must be allowed to create and drop databases.
