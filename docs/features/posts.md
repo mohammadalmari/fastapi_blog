@@ -20,7 +20,9 @@ It is the first feature to use the "own or any" permission check; see
 | `models.py` | `Post`, `PostView` (a post with its author), `TagCount` |
 | `schemas.py` | What the API accepts and returns, the field limits, the feed's query parameters |
 | `repository.py` | Queries, indexes, paging, the tag aggregation |
-| `service.py` | `PostService`: who may see and change what |
+| `policy.py` | `may_see`: who may see a post. Plain Python, for features built on posts |
+| `service.py` | `PostService`: who may change what, and the cleanup hooks run when a post is deleted |
+| `dependencies.py` | Providers, the `PostId` path parameter, and where the cleanup hooks are registered |
 | `router.py` | Three routers: posts, the caller's own posts, tags |
 
 ## The collection
@@ -37,7 +39,8 @@ It is the first feature to use the "own or any" permission check; see
 | `tags` | Up to 10. Each 1 to 30 characters: letters and digits of any script, and `+ # . - _` |
 | `status` | `draft` or `published` |
 | `published_at` | Set the first time it is published, and kept after that |
-| `like_count`, `comment_count` | Zero for now; later features maintain them |
+| `comment_count` | Live comments, replies included; kept by the comments feature |
+| `like_count` | Zero for now |
 | `created_at` | |
 | `updated_at` | When the text or tags last changed. Publishing does not move it |
 
@@ -66,7 +69,9 @@ longer edit them.
 
 - **A post you may not see is "not found", never "forbidden".** A 403 on
   someone's draft would confirm that the draft exists. `PostService._load`
-  answers 404 first; only then does `authorize` decide 403.
+  answers 404 first, using `may_see`; only then does `authorize` decide 403.
+  Features built on posts ask `may_see` too: what hangs from a post is
+  exactly as visible as the post.
 - **Every public list filters on `status: "published"`.** The feed, the feed
   by tag, the feed by author, and the tag counts. A draft must not be
   reachable sideways.
@@ -120,6 +125,9 @@ longer edit them.
 - **Reading is by slug and writing by id.** The paths `/posts/{slug}` and
   `/posts/{post_id}` differ only in the parameter's name, which strict
   OpenAPI tooling may question. Accepted, for readable URLs.
+- **Deleting a post runs cleanup hooks in the same transaction.** The post
+  goes first, then whatever each feature registered: today its comments.
+  `PostService` imports nothing from those features.
 - **Lists carry summaries.** The feed returns the excerpt, not the content.
 - **Authors are fetched once per page**, not once per post. A post whose
   author's account is gone is shown with `author: null`.
@@ -128,8 +136,8 @@ longer edit them.
 
 ## Not here yet
 
-- Deleting a post will also have to delete its comments and likes once those
-  exist. `liked_by_me` arrives with likes.
+- Deleting a post will also have to delete its likes once those exist.
+  `liked_by_me` arrives with likes.
 - `/tags` returns the 100 most used tags and counts them afresh on every
   request. It is a candidate for caching.
 - What happens to a deactivated author's posts is undecided; today they stay.
@@ -140,4 +148,4 @@ longer edit them.
 attacker's side and one test per permission held alone.
 `tests/posts/test_post_rules.py` for slugs, tags, excerpts and field limits.
 Fixtures for authors, an editor and ready-made posts are in
-`tests/posts/conftest.py`.
+`tests/conftest.py`.

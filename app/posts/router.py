@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from app.core.errors import error_responses
 from app.core.pagination import Page
-from app.core.types import PyObjectId
-from app.posts.dependencies import PostServiceDep
+from app.posts.dependencies import PostId, PostServiceDep
 from app.posts.models import PostView
 from app.posts.repository import TAG_LIMIT
 from app.posts.schemas import (
@@ -17,7 +16,12 @@ from app.posts.schemas import (
     PostUpdate,
     TagCount,
 )
-from app.rbac.dependencies import OptionalPrincipalDep, PrincipalDep, require_permission
+from app.rbac.dependencies import (
+    LOGIN_OPTIONAL,
+    OptionalPrincipalDep,
+    PrincipalDep,
+    require_permission,
+)
 from app.rbac.permissions import Perm
 from app.rbac.policy import Principal
 
@@ -30,14 +34,9 @@ tags_router = APIRouter(prefix="/tags", tags=["posts"])
 # /posts/{post_id} differ only in the parameter's name. FastAPI routes them by
 # method without trouble. Strict OpenAPI tooling may complain about the pair;
 # that is accepted, in exchange for readable URLs on the route people share.
-PostId = Annotated[PyObjectId, Path(description="The post's id.")]
 _WRITE_ERRORS = error_responses(
     status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND
 )
-# In the API docs this marks a route as usable with or without a login. FastAPI
-# adds this empty entry to the login the route already lists, and an empty
-# entry means "no credentials" is one of the accepted ways in.
-_LOGIN_OPTIONAL = {"security": [{}]}
 
 
 # The internal post and its author go in whole; `response_model` keeps only the
@@ -88,7 +87,7 @@ async def create_post(
     "/{slug}",
     response_model=PostPublic,
     responses=error_responses(status.HTTP_401_UNAUTHORIZED, status.HTTP_404_NOT_FOUND),
-    openapi_extra=_LOGIN_OPTIONAL,
+    openapi_extra=LOGIN_OPTIONAL,
 )
 async def read_post(
     slug: Annotated[str, Path(max_length=120, description="The post's slug, from its URL.")],

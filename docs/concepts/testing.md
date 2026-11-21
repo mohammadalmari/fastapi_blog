@@ -3,7 +3,7 @@
 ## What is this?
 
 How the tests are set up, the rules for writing them, and how the suite is
-kept fast. About 430 tests run in under ten seconds.
+kept fast. About 520 tests run in about ten seconds.
 
 ## Why these rules exist
 
@@ -39,6 +39,9 @@ response.
 - **Cheap passwords.** Tests hash with minimum-cost Argon2. A test about the
   production hasher asks for the `real_password_hashing` fixture, and one
   test pins that the app itself uses the recommended parameters.
+- **Ready-made writers, posts and comments.** `author`, `other_author`,
+  `editor`, `make_post`, a published `post`, and `make_comment`, which goes
+  through the service so the counters it leaves are real.
 - **Ready-made people.** `user` (a reader) and `admin` are put straight into
   the database; `user_headers`, `admin_headers` and `headers_for(someone)`
   log them in. `make_user("name", "role")` and `make_role("name", Perm.X)`

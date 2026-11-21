@@ -65,6 +65,14 @@ Username = Annotated[
 ]
 
 
+class AuthorSummary(BaseModel):
+    """A user as shown beside something they wrote: who, and nothing private."""
+
+    id: PyObjectId
+    username: str
+    display_name: str | None
+
+
 class RoleSummary(BaseModel):
     id: PyObjectId
     name: str

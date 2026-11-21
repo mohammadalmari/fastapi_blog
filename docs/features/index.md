@@ -9,6 +9,7 @@ parts are, the rules it enforces, and the decisions behind it.
 | [auth.md](auth.md) | `app/auth/`: sign-up, login, refresh tokens, logout, and the current-user dependency |
 | [users.md](users.md) | `app/users/`: the user model and repository, `/users/me`, role assignment |
 | [posts.md](posts.md) | `app/posts/`: posts, drafts and publishing, slugs, the feed with tag and author filters, tags |
+| [comments.md](comments.md) | `app/comments/`: comments and one level of replies, deletion and placeholders, the counters kept in transactions |
 | [rbac.md](rbac.md) | `app/rbac/` and `app/scripts/seed.py`: the permission catalog, roles, checks, startup sync, the seed command |
 
 ## The shape every feature shares

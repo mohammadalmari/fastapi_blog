@@ -1,10 +1,15 @@
 """Writing, publishing and reading posts, and who may do which."""
 
+from collections.abc import Awaitable, Sequence
+from typing import Protocol
+
 from bson import ObjectId
 
+from app.core.database import Database, Session, in_transaction
 from app.core.errors import ConflictError, NotFoundError
 from app.core.pagination import CursorPosition
 from app.posts.models import Post, PostStatus, PostView, TagCount
+from app.posts.policy import may_see
 from app.posts.repository import PostRepository, SlugUnavailableError
 from app.posts.rules import make_excerpt
 from app.posts.schemas import PostCreate, PostUpdate
@@ -14,27 +19,35 @@ from app.users.repository import UserRepository
 
 _NOT_FOUND = "Post not found"
 
-# Any of these lets its holder see other people's drafts. Reading them is its
-# own permission, but so is each way of acting on them: someone trusted to
-# publish any post has to be able to see the one they are publishing.
-_DRAFT_ACCESS = (
-    Perm.POSTS_READ_DRAFTS_ANY,
-    Perm.POSTS_UPDATE_ANY,
-    Perm.POSTS_PUBLISH_ANY,
-    Perm.POSTS_DELETE_ANY,
-)
+
+class PostCleanup(Protocol):
+    """Something to run when a post is deleted, inside the same transaction."""
+
+    def __call__(self, post_id: ObjectId, *, session: Session) -> Awaitable[None]: ...
 
 
 class PostService:
-    def __init__(self, posts: PostRepository, users: UserRepository) -> None:
+    def __init__(
+        self,
+        db: Database,
+        posts: PostRepository,
+        users: UserRepository,
+        on_delete: Sequence[PostCleanup] = (),
+    ) -> None:
+        self._db = db
         self._posts = posts
         self._users = users
+        # What hangs from a post (its comments, later its likes) is removed
+        # with it. The features that own those things register how; this
+        # service knows only that there may be something to clean up, and so
+        # depends on none of them.
+        self._on_delete = on_delete
 
     # --- reading ------------------------------------------------------------
 
     async def get_by_slug(self, principal: Principal | None, slug: str) -> PostView:
         post = await self._posts.get_by_slug(slug)
-        if post is None or not _may_see(principal, post):
+        if post is None or not may_see(principal, post):
             raise NotFoundError(_NOT_FOUND)
         return await self._view(post)
 
@@ -152,7 +165,17 @@ class PostService:
             own=Perm.POSTS_DELETE_OWN,
             owner_id=post.author_id,
         )
-        await self._posts.delete(post_id)
+
+        async def work(session: Session) -> None:
+            # The post and what hangs from it go together or not at all, so
+            # nothing is left pointing at a post that isn't there. The post
+            # first: it is the document other requests are most likely to be
+            # writing, so a clash is found before the larger work is done.
+            await self._posts.delete(post_id, session=session)
+            for clean_up in self._on_delete:
+                await clean_up(post_id, session=session)
+
+        await in_transaction(self._db, work)
 
     # --- helpers ------------------------------------------------------------
 
@@ -166,7 +189,7 @@ class PostService:
         "forbidden", which the `authorize` call after this decides.
         """
         post = await self._posts.get(post_id)
-        if post is None or not _may_see(principal, post):
+        if post is None or not may_see(principal, post):
             raise NotFoundError(_NOT_FOUND)
         return post
 
@@ -177,14 +200,3 @@ class PostService:
         # One query for all the authors of a page, not one per post.
         authors = await self._users.get_many({post.author_id for post in posts})
         return [PostView(post, authors.get(post.author_id)) for post in posts]
-
-
-def _may_see(principal: Principal | None, post: Post) -> bool:
-    """Everyone sees a published post. A draft: its author, and whoever may act on drafts."""
-    if post.status == "published":
-        return True
-    if principal is None:
-        return False
-    if post.author_id == principal.user.id:
-        return True
-    return any(principal.has(permission) for permission in _DRAFT_ACCESS)

@@ -13,9 +13,11 @@ from pydantic import (
 )
 
 from app.core.pagination import PageParams
+from app.core.text import has_hidden_characters
 from app.core.types import PyObjectId
 from app.posts.models import PostStatus
-from app.posts.rules import TAG_MAX_LENGTH, has_hidden_characters, normalize_tag, tag_problem
+from app.posts.rules import TAG_MAX_LENGTH, normalize_tag, tag_problem
+from app.users.schemas import AuthorSummary
 
 TITLE_MAX_LENGTH = 200
 CONTENT_MAX_LENGTH = 100_000
@@ -127,12 +129,6 @@ class FeedParams(PageParams):
 
 class MyPostsParams(PageParams):
     status: PostStatus | None = Field(default=None, description="Only drafts, or only published.")
-
-
-class AuthorSummary(BaseModel):
-    id: PyObjectId
-    username: str
-    display_name: str | None
 
 
 class PostSummary(BaseModel):

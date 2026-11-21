@@ -20,9 +20,8 @@ from app.posts.models import Post
 from app.posts.repository import PostRepository
 from app.rbac.permissions import Perm
 from app.users.models import User
-from tests.conftest import HeadersFor, MakeRole, MakeUser
-from tests.helpers import API
-from tests.posts.conftest import MakePost
+from tests.conftest import HeadersFor, MakePost, MakeRole, MakeUser
+from tests.helpers import API, plan_stages
 
 pytestmark = pytest.mark.anyio
 
@@ -1015,21 +1014,6 @@ async def test_a_response_that_depends_on_who_asks_is_never_cached(
 # --- the indexes really serve the queries ---------------------------------------
 
 
-def _stages(plan: object) -> set[str]:
-    """Every stage name anywhere in a query plan."""
-    found: set[str] = set()
-    if isinstance(plan, dict):
-        stage = plan.get("stage")
-        if isinstance(stage, str):
-            found.add(stage)
-        for value in plan.values():
-            found |= _stages(value)
-    elif isinstance(plan, list):
-        for item in plan:
-            found |= _stages(item)
-    return found
-
-
 @pytest.mark.parametrize(
     ("index", "match", "sort_field"),
     [
@@ -1066,7 +1050,7 @@ async def test_each_list_is_read_from_its_index_in_order(
         verbosity="queryPlanner",
     )
 
-    stages = _stages(explained["queryPlanner"]["winningPlan"])
+    stages = plan_stages(explained["queryPlanner"]["winningPlan"])
     assert "IXSCAN" in stages
     assert "SORT" not in stages, stages
 

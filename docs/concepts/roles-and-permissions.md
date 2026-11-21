@@ -48,7 +48,8 @@ therefore takes effect on their next request.
   loaded: `authorize(principal, any_=..., own=..., owner_id=...)` passes with
   the `:any` permission, or with the `:own` one when the thing is the
   caller's. `principal.can(...)` is the same rule as a yes or no, for
-  filtering a list.
+  filtering a list. Either permission may be left out: editing a comment
+  has no `:any` form, so nobody can edit someone else's.
 
 ### You can't grant what you don't hold
 

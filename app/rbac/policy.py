@@ -27,23 +27,32 @@ class Principal:
     def has(self, permission: Perm) -> bool:
         return permission in self.permissions
 
-    def can(self, *, any_: Perm, own: Perm | None = None, owner_id: ObjectId) -> bool:
+    def can(self, *, owner_id: ObjectId, any_: Perm | None = None, own: Perm | None = None) -> bool:
         """
         The rule for things that have an owner: yes with the ``:any``
         permission, or with the ``:own`` one when the thing is the caller's.
 
-        Some actions have no ``:own`` form (reading drafts: an owner may
-        always read theirs, which the caller checks itself), so ``own`` is
-        optional. Use this where a "no" isn't an error, as when filtering a
-        list; use ``authorize`` where it is.
+        Either may be left out. Some actions have no ``:own`` form (reading
+        drafts: an owner may always read theirs, which the caller checks
+        itself). Some have no ``:any`` form (editing a comment: nobody may
+        change someone else's words). Use this where a "no" isn't an error,
+        as when filtering a list; use ``authorize`` where it is.
         """
-        if self.has(any_):
+        if any_ is None and own is None:
+            # A forgotten argument. Answering "no" would be safe but silent: it
+            # would show up as a route nobody can use. Fail where it is.
+            raise TypeError("can() needs any_, own, or both")
+        if any_ is not None and self.has(any_):
             return True
         return own is not None and self.has(own) and owner_id == self.user.id
 
 
 def authorize(
-    principal: Principal, *, any_: Perm, own: Perm | None = None, owner_id: ObjectId
+    principal: Principal,
+    *,
+    owner_id: ObjectId,
+    any_: Perm | None = None,
+    own: Perm | None = None,
 ) -> None:
     """``Principal.can``, as a check that raises. Called from a service once
     it has loaded the thing in question."""

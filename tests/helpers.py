@@ -71,3 +71,18 @@ async def logout_with(client: AsyncClient, refresh_token: str) -> Response:
     )
     client.cookies.clear()
     return response
+
+
+def plan_stages(plan: object) -> set[str]:
+    """Every stage name anywhere in a MongoDB query plan, as `explain` returns it."""
+    found: set[str] = set()
+    if isinstance(plan, dict):
+        stage = plan.get("stage")
+        if isinstance(stage, str):
+            found.add(stage)
+        for value in plan.values():
+            found |= plan_stages(value)
+    elif isinstance(plan, list):
+        for item in plan:
+            found |= plan_stages(item)
+    return found

@@ -17,6 +17,7 @@ from app.users.dependencies import UserRepositoryDep
 from app.users.models import User
 
 __all__ = [
+    "LOGIN_OPTIONAL",
     "OptionalPrincipalDep",
     "PrincipalDep",
     "RoleRepositoryDep",
@@ -58,6 +59,13 @@ async def get_optional_principal(
 
 
 OptionalPrincipalDep = Annotated[Principal | None, Depends(get_optional_principal)]
+
+# Pass as `openapi_extra=` on a route that takes `OptionalPrincipalDep`. In the
+# API docs it marks the route as usable with or without a login: FastAPI adds
+# this empty entry to the login the route already lists, and an empty entry
+# means "no credentials" is one of the accepted ways in. Without it the docs
+# show a padlock on a public route.
+LOGIN_OPTIONAL: dict[str, Any] = {"security": [{}]}
 
 
 async def _principal_of(user: User, roles: RoleRepository) -> Principal:

@@ -5,6 +5,7 @@ from asyncer import asyncify
 from fastapi import APIRouter, FastAPI
 
 from app.auth.router import router as auth_router
+from app.comments.router import comments_router, post_comments_router
 from app.core import health
 from app.core.database import create_client, ensure_indexes
 from app.core.errors import install_error_handlers
@@ -78,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(posts_router)
     api.include_router(my_posts_router)
     api.include_router(tags_router)
+    api.include_router(post_comments_router)
+    api.include_router(comments_router)
     app.include_router(api)
 
     return app

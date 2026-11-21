@@ -1,7 +1,9 @@
-"""Pure text rules for posts: slugs, tags, titles and excerpts. No database, no FastAPI."""
+"""Pure text rules for posts: slugs, tags and excerpts. No database, no FastAPI."""
 
 import re
 import unicodedata
+
+from app.core.text import kind
 
 SLUG_MAX_LENGTH = 80
 TAG_MAX_LENGTH = 30
@@ -12,15 +14,6 @@ EXCERPT_LENGTH = 200
 # run of "[" with no "]"): 100,000 such characters took 26 seconds, on a route
 # any author can call. 2,000 take a few milliseconds at worst.
 EXCERPT_SOURCE_LENGTH = 2_000
-
-# Zero-width non-joiner and joiner. Invisible, but part of how Persian and
-# several Indian scripts spell words, so titles may contain them.
-_JOINERS = "\u200c\u200d"
-
-
-def _kind(character: str) -> str:
-    """The first letter of the Unicode category: L letter, M mark, N number, ..."""
-    return unicodedata.category(character)[0]
 
 
 def slugify(title: str) -> str:
@@ -38,7 +31,7 @@ def slugify(title: str) -> str:
     words: list[str] = []
     word = ""
     for character in unicodedata.normalize("NFKC", title).lower():
-        if _kind(character) in "LMN":
+        if kind(character) in "LMN":
             word += character
         elif character.isspace() or character in "-_":
             words.append(word)
@@ -63,22 +56,13 @@ def tag_problem(tag: str) -> str | None:
         # tags use: c++, c#, node.js, .net, web_dev. Not allowed: slashes and
         # other punctuation, and above all invisible characters, which would
         # let "py<zero-width joiner>thon" pose as "python".
-        if _kind(character) not in "LMN" and character not in "+#.-_":
+        if kind(character) not in "LMN" and character not in "+#.-_":
             return "A tag may contain letters, digits and + # . - _"
-    if not any(_kind(character) in "LN" for character in tag):
+    if not any(kind(character) in "LN" for character in tag):
         return "A tag needs at least one letter or digit"
-    if _kind(tag[0]) == "M":
+    if kind(tag[0]) == "M":
         return "A tag can't start with an accent"
     return None
-
-
-def has_hidden_characters(text: str) -> bool:
-    """
-    Control and formatting characters: NUL, line breaks, and the invisible
-    marks that reverse or hide text. In a title or excerpt they can make it
-    display as something other than what it is.
-    """
-    return any(_kind(character) == "C" and character not in _JOINERS for character in text)
 
 
 # An opening fence up to its closing fence, or to the end if it is never

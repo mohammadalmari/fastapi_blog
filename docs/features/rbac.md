@@ -18,13 +18,13 @@ this page is about the code.
 | Module | Holds | Imports FastAPI? |
 | ------ | ----- | ---------------- |
 | `permissions.py` | `Perm`, descriptions, the built-in role definitions | No |
-| `policy.py` | `Principal`, `authorize`, `ensure_can_grant` | No |
+| `policy.py` | `Principal`, `authorize`, `ensure_can_grant`. A check that names no permission raises: it can only be a forgotten argument | No |
 | `models.py`, `schemas.py` | `Role`, and what the API accepts and returns | No |
 | `repository.py` | Queries on `roles` | No |
 | `service.py` | `RoleService` | No |
 | `sync.py` | What startup does | No |
 | `providers.py` | The role repository's provider, kept free of `auth` | Yes |
-| `dependencies.py` | `get_principal`, `get_optional_principal`, `require_permission`, the service provider | Yes |
+| `dependencies.py` | `get_principal`, `get_optional_principal`, `require_permission`, the service provider, and `LOGIN_OPTIONAL` for marking a route as login-optional in the API docs | Yes |
 | `router.py` | The routes | Yes |
 
 `policy.py` is separate from `dependencies.py` so that services, which may not
@@ -68,6 +68,9 @@ sync keeps identical.
 
 # Something with an owner: check in the service, after loading it.
 authorize(principal, any_=Perm.POSTS_UPDATE_ANY, own=Perm.POSTS_UPDATE_OWN, owner_id=post.author_id)
+
+# An action with no ":any" form: the owner, and nobody else.
+authorize(principal, own=Perm.COMMENTS_UPDATE_OWN, owner_id=comment.author_id)
 
 # A yes or no, for filtering.
 if principal.can(any_=Perm.POSTS_READ_DRAFTS_ANY, owner_id=post.author_id): ...

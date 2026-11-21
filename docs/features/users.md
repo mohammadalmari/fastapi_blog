@@ -41,6 +41,9 @@ public schema as its `response_model`. FastAPI then keeps only that schema's
 fields at every level, which is what stops `password_hash` reaching a
 response.
 
+`AuthorSummary` (id, username, display name) is how a user is shown beside
+something they wrote. Posts and comments both use it.
+
 ## Rules
 
 - **Emails and usernames are normalized the same way at sign-up and at

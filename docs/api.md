@@ -60,7 +60,7 @@ See [features/posts.md](features/posts.md).
 | `POST /api/v1/posts` | `posts:create` | Write a post; it starts as a draft |
 | `GET /api/v1/posts/{slug}` | Nothing for a published post | One post. A draft is shown to its author and to holders of any `posts:...:any` permission |
 | `PATCH /api/v1/posts/{post_id}` | `posts:update:own` on your post, or `posts:update:any`; for a published post also the permission to publish it | Edit a post |
-| `DELETE /api/v1/posts/{post_id}` | `posts:delete:own` on your post, or `posts:delete:any` | Delete a post |
+| `DELETE /api/v1/posts/{post_id}` | `posts:delete:own` on your post, or `posts:delete:any` | Delete a post and its comments |
 | `POST /api/v1/posts/{post_id}/publish` | `posts:publish:own` on your post, or `posts:publish:any` | Make a post public |
 | `POST /api/v1/posts/{post_id}/unpublish` | `posts:publish:own` on your post, or `posts:publish:any` | Turn it back into a draft |
 | `GET /api/v1/users/me/posts` | Login | The caller's own posts, drafts included; `status` filters |
@@ -69,6 +69,20 @@ See [features/posts.md](features/posts.md).
 Lists are paged by cursor: pass the `next_cursor` of one page as `cursor` to
 get the next, until it is null. A cursor belongs to the list that issued it.
 A query parameter a list doesn't have is a 422, not ignored.
+
+## Comments
+
+See [features/comments.md](features/comments.md). A comment is as visible as
+the post it is on.
+
+| Route | Needs | What it does |
+| ----- | ----- | ------------ |
+| `GET /api/v1/posts/{post_id}/comments` | Nothing, if the post is visible | The comments on a post, oldest first, each with its number of replies |
+| `POST /api/v1/posts/{post_id}/comments` | `comments:create` | Comment on a published post |
+| `GET /api/v1/comments/{comment_id}/replies` | Nothing, if the post is visible | The replies to a comment, oldest first |
+| `POST /api/v1/comments/{comment_id}/replies` | `comments:create` | Reply to a comment; replies can't be replied to |
+| `PATCH /api/v1/comments/{comment_id}` | `comments:update:own`, on your own comment | Edit your comment |
+| `DELETE /api/v1/comments/{comment_id}` | `comments:delete:own` on your comment, or `comments:delete:any` | Delete a comment; if it has replies it stays as a placeholder with its content erased |
 
 ## Roles and permissions
 

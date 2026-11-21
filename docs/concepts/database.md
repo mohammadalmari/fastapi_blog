@@ -50,8 +50,9 @@ single node is enough.
 `in_transaction(db, work)` runs `work(session)` so that all of its writes
 happen or none do. Every query inside must be passed `session=`.
 
-Use one when a check and a write must hold together. "Is there another
-admin?" and "remove this one" is the example in the code. When two
+Use one when a check and a write must hold together ("is there another
+admin?" and "remove this one"), or when several writes must all happen or
+none (a comment and the counts that include it). When two
 transactions write the same document, MongoDB aborts one and the driver
 retries it, so `work` may run more than once and must not have side effects
 outside the database.
@@ -71,6 +72,8 @@ repositories insert and translate the duplicate-key error instead.
 | `users` | `email` unique, `username` unique |
 | `refresh_tokens` | `expires_at` TTL (MongoDB deletes expired tokens itself), `user_id`, `family_id` |
 | `roles` | `name` unique; `is_default` unique where it is true, so only one role can be the default |
+| `posts` | `slug` unique; four named indexes for the feed, the feed by tag, the feed by author, and an author's own list |
+| `comments` | `thread` on `(post_id, parent_id, created_at, _id)`, for a post's comments and a comment's replies |
 | `permissions` | None; the `_id` is the permission's name |
 
 ### Ids

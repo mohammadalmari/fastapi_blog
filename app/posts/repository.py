@@ -7,7 +7,7 @@ from bson import ObjectId
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from app.core.database import Database, Document, register_indexes, utcnow
+from app.core.database import Database, Document, Session, register_indexes, utcnow
 from app.core.pagination import CursorPosition, cursor_filter, cursor_sort, split_page
 from app.posts.models import Post, PostStatus, TagCount
 from app.posts.rules import slugify
@@ -138,8 +138,28 @@ class PostRepository:
         )
         return _to_post(doc) if doc else None
 
-    async def delete(self, post_id: ObjectId) -> None:
-        await self._posts.delete_one({"_id": post_id})
+    async def delete(self, post_id: ObjectId, *, session: Session) -> None:
+        await self._posts.delete_one({"_id": post_id}, session=session)
+
+    async def add_comment(self, post_id: ObjectId, *, session: Session) -> bool:
+        """
+        Count one more comment on a post, if it takes comments: it must be
+        published. False if it doesn't.
+
+        The condition is part of the update, so it holds at the moment of
+        writing and not only when the service looked a moment earlier.
+        """
+        result = await self._posts.update_one(
+            {"_id": post_id, "status": "published"},
+            {"$inc": {"comment_count": 1}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def remove_comment(self, post_id: ObjectId, *, session: Session) -> None:
+        await self._posts.update_one(
+            {"_id": post_id}, {"$inc": {"comment_count": -1}}, session=session
+        )
 
     async def list_published(
         self,

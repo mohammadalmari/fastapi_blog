@@ -19,7 +19,7 @@ module.
 
 import os
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -40,12 +40,21 @@ for _name in [name for name in os.environ if name.startswith("FASTAPI_")]:
     del os.environ[_name]
 os.environ["FASTAPI_DEBUG"] = "true"
 
+from app.comments.dependencies import get_comment_service  # noqa: E402
+from app.comments.models import Comment  # noqa: E402
+from app.comments.repository import CommentRepository  # noqa: E402
+from app.comments.schemas import CommentCreate  # noqa: E402
 from app.core.database import Database, create_client, registered_collections  # noqa: E402
 from app.core.security import create_access_token, hash_password, passwords  # noqa: E402
 from app.core.settings import Settings  # noqa: E402
 from app.core.settings.environment import ROOT_DIR  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.posts.models import Post  # noqa: E402
+from app.posts.repository import PostRepository  # noqa: E402
+from app.posts.rules import make_excerpt  # noqa: E402
+from app.rbac.dependencies import get_principal  # noqa: E402
 from app.rbac.models import Role  # noqa: E402
+from app.rbac.permissions import OPTIONAL_ROLES  # noqa: E402
 from app.rbac.repository import PERMISSIONS, RoleRepository  # noqa: E402
 from app.rbac.sync import ensure_system_roles  # noqa: E402
 from app.users.models import User  # noqa: E402
@@ -340,3 +349,115 @@ def user_headers(user: User, headers_for: HeadersFor) -> dict[str, str]:
 @pytest.fixture
 def admin_headers(admin: User, headers_for: HeadersFor) -> dict[str, str]:
     return headers_for(admin)
+
+
+# --- writers, posts and comments ----------------------------------------------
+# Used by the tests of more than one feature, which is why they are here and
+# not in a feature's own folder.
+
+
+class MakePost(Protocol):
+    def __call__(
+        self,
+        author: User,
+        title: str = "A post",
+        *,
+        content: str = "Some **content**.",
+        tags: Sequence[str] = (),
+        published: bool = False,
+    ) -> Awaitable[Post]: ...
+
+
+class MakeComment(Protocol):
+    def __call__(
+        self, by: User, on: Post, content: str = "Nice post.", *, reply_to: Comment | None = None
+    ) -> Awaitable[Comment]: ...
+
+
+@pytest.fixture
+async def author_role(make_role: MakeRole) -> None:
+    """May write, edit, publish and delete their own posts, as the seeded author role may."""
+    await make_role("author", *OPTIONAL_ROLES["author"].permissions)
+
+
+@pytest.fixture
+async def author(author_role: None, make_user: MakeUser) -> User:
+    return await make_user("ali", "author")
+
+
+@pytest.fixture
+async def other_author(author_role: None, make_user: MakeUser) -> User:
+    return await make_user("omar", "author")
+
+
+@pytest.fixture
+async def editor(make_role: MakeRole, make_user: MakeUser) -> User:
+    """May edit, publish and delete anyone's posts and read drafts; may not write new ones."""
+    await make_role("editor", *OPTIONAL_ROLES["editor"].permissions)
+    return await make_user("eve", "editor")
+
+
+@pytest.fixture
+def author_headers(author: User, headers_for: HeadersFor) -> dict[str, str]:
+    return headers_for(author)
+
+
+@pytest.fixture
+def make_post(db: Database) -> MakePost:
+    """``await make_post(author, "Title", published=True)`` stores a post directly."""
+
+    async def make(
+        author: User,
+        title: str = "A post",
+        *,
+        content: str = "Some **content**.",
+        tags: Sequence[str] = (),
+        published: bool = False,
+    ) -> Post:
+        repository = PostRepository(db)
+        post = await repository.create(
+            author_id=author.id,
+            title=title,
+            content=content,
+            excerpt=make_excerpt(content),
+            tags=list(tags),
+        )
+        if published:
+            published_post = await repository.set_published(post.id, published=True)
+            assert published_post is not None
+            post = published_post
+        return post
+
+    return make
+
+
+@pytest.fixture
+async def post(author: User, make_post: MakePost) -> Post:
+    """A published post by `author`."""
+    return await make_post(author, "A post to discuss", published=True)
+
+
+@pytest.fixture
+def make_comment(db: Database) -> MakeComment:
+    """
+    ``await make_comment(user, post, "text")``, or ``reply_to=comment``.
+
+    Goes through the service, not straight to the database, so that the
+    counters on the post and on the parent comment are kept as the app keeps
+    them; and through the app's own provider functions, so that the service
+    is built the way a request builds it. Without HTTP, so it is quick.
+    """
+
+    async def make(
+        by: User, on: Post, content: str = "Nice post.", *, reply_to: Comment | None = None
+    ) -> Comment:
+        service = await get_comment_service(
+            db, CommentRepository(db), PostRepository(db), UserRepository(db)
+        )
+        principal = await get_principal(by, RoleRepository(db))
+        data = CommentCreate(content=content)
+        if reply_to is not None:
+            return (await service.reply(principal, reply_to.id, data)).comment
+        return (await service.create(principal, on.id, data)).comment
+
+    return make
