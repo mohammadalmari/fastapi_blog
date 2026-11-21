@@ -1,0 +1,21 @@
+[project]
+name = "fastapi-blog"
+version = "0.1.0"
+description = "A multi-user blog API built with FastAPI, featuring authentication and dynamic role-based permissions."
+readme = "README.md"
+authors = [
+    { name = "Mohammad Almar'i", email = "mohammadalmarei@outlook.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.165.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+    "ty>=0.0.107",
+]
+
+[tool.fastapi]
+entrypoint = "app.main:app"

@@ -1,0 +1,27 @@
+[environment]
+# Pin the venv so the editor's language server resolves installed packages
+# the same way `ty check` does. Python version is read from requires-python.
+python = "./.venv"
+
+[rules]
+# --- unsoundness: no silent `Any` leaking through ---
+unsound-assignment = "error"
+unsound-return = "error"
+unsound-yield = "error"
+unsupported-dynamic-base = "error"
+dynamic-function-decorator-return = "error"
+
+# --- completeness ---
+missing-type-argument = "error"        # no bare `list` / `dict`
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+possibly-unresolved-reference = "error"
+missing-override-decorator = "error"   # require @override on overridden methods
+
+# --- correctness ---
+division-by-zero = "error"
+deprecated = "error"
+
+# --- suppression hygiene ---
+blanket-ignore-comment = "warn"        # prefer `# ty: ignore[rule-name]`
+unused-ignore-comment = "error"        # keep suppressions from going stale
