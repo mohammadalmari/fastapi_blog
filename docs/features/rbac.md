@@ -24,7 +24,7 @@ this page is about the code.
 | `service.py` | `RoleService` | No |
 | `sync.py` | What startup does | No |
 | `providers.py` | The role repository's provider, kept free of `auth` | Yes |
-| `dependencies.py` | `get_principal`, `require_permission`, the service provider | Yes |
+| `dependencies.py` | `get_principal`, `get_optional_principal`, `require_permission`, the service provider | Yes |
 | `router.py` | The routes | Yes |
 
 `policy.py` is separate from `dependencies.py` so that services, which may not

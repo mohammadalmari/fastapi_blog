@@ -64,6 +64,32 @@ async def get_current_user(
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
+# The same scheme, except that a request without a token is let through. Both
+# go by one name in the API docs on purpose: they are one way of logging in.
+_optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{API_PREFIX}/auth/login", auto_error=False
+)
+
+
+async def get_optional_user(
+    token: Annotated[str | None, Depends(_optional_oauth2_scheme)],
+    users: UserRepositoryDep,
+    settings: SettingsDep,
+) -> User | None:
+    """
+    For routes that work without a login but show more with one.
+
+    No token means an anonymous visitor. A token that is present but bad is
+    still a 401, not treated as "no token": a client whose token has expired
+    needs to be told, so that it refreshes instead of quietly seeing less.
+    """
+    if token is None:
+        return None
+    return await get_current_user(token, users, settings)
+
+
+OptionalUserDep = Annotated[User | None, Depends(get_optional_user)]
+
 
 async def verify_origin(
     request: Request,

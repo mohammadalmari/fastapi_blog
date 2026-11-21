@@ -1,6 +1,6 @@
 """Every MongoDB query on the ``users`` collection."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Literal
 
 from bson import ObjectId
@@ -75,8 +75,28 @@ class UserRepository:
         doc = await self._users.find_one({"_id": user_id}, session=session)
         return _to_user(doc) if doc else None
 
+    async def get_many(self, user_ids: Iterable[ObjectId]) -> dict[ObjectId, User]:
+        """The users with these ids, by id. Ids that match nobody are simply absent."""
+        cursor = self._users.find({"_id": {"$in": list(user_ids)}})
+        return {doc["_id"]: _to_user(doc) async for doc in cursor}
+
     async def get_by_email(self, email: str) -> User | None:
         doc = await self._users.find_one({"email": email})
+        return _to_user(doc) if doc else None
+
+    async def get_by_username(self, username: str) -> User | None:
+        """
+        For public lookups. Unlike ``get_by_login`` this never matches an
+        email: usernames are public and emails aren't, and a public route that
+        accepted either would reveal which emails have accounts.
+        """
+        field, value = normalize_login_identifier(username)
+        # A username can't contain "@", so searching the username field for
+        # an email could never match anyway. Refusing it outright states the
+        # rule instead of relying on that.
+        if field != "username":
+            return None
+        doc = await self._users.find_one({"username": value})
         return _to_user(doc) if doc else None
 
     async def get_by_login(self, identifier: str) -> User | None:

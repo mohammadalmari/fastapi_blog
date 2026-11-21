@@ -1,11 +1,14 @@
+import base64
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from bson import ObjectId
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import Database
+from app.core.errors import FieldError
 from app.core.pagination import (
     CursorPosition,
     Page,
@@ -27,12 +30,40 @@ def test_cursor_round_trips() -> None:
     assert decode_cursor(encode_cursor(position)) == position
 
 
-@pytest.mark.parametrize("cursor", ["", "not-base64!", "aGVsbG8=", "WzEsIDJd", "W10="])
-def test_a_bad_cursor_is_a_422(cursor: str) -> None:
-    with pytest.raises(HTTPException) as raised:
+def _forged(*payload: object) -> str:
+    return base64.urlsafe_b64encode(json.dumps(list(payload)).encode()).decode()
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "",
+        "not-base64!",
+        "aGVsbG8=",  # base64, but not JSON
+        _forged(1, 2),
+        _forged(),
+        _forged("2024-01-01T00:00:00+00:00"),
+        # The attack: a cursor is not signed, so anyone can write one. Each of
+        # these once got past decoding and crashed later, as a 500.
+        _forged("2024-01-01T00:00:00+00:00", "zzz"),
+        _forged("2024-01-01T00:00:00+00:00", 5),
+        _forged("0001-01-01T00:00:00+23:59", "a" * 24),
+        _forged("9999-12-31T23:59:59-23:59", "a" * 24),
+        _forged({"$gt": ""}, "a" * 24),
+    ],
+)
+def test_a_cursor_that_cannot_be_read_is_refused(cursor: str) -> None:
+    with pytest.raises(FieldError) as raised:
         decode_cursor(cursor)
 
     assert raised.value.status_code == 422
+    assert (raised.value.where, raised.value.field) == ("query", "cursor")
+
+
+def test_a_cursor_without_a_timezone_is_read_as_utc() -> None:
+    position = decode_cursor(_forged("2026-01-01T00:00:00", "a" * 24))
+
+    assert position.sort_value == START
 
 
 def test_split_page_without_a_next_page() -> None:
@@ -99,3 +130,21 @@ async def test_query_parameters() -> None:
     assert custom.json() == {"items": [100], "next_cursor": "abc"}
     assert too_big.status_code == 422
     assert too_small.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_query_parameters_that_do_not_exist_are_refused() -> None:
+    """A misspelt filter should be an error, not a silently unfiltered list."""
+    app = FastAPI()
+
+    @app.get("/things")
+    async def list_things(params: PageParamsDep) -> Page[int]:
+        return Page(items=[], next_cursor=None)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        misspelt = await client.get("/things", params={"limti": 5})
+        too_long = await client.get("/things", params={"cursor": "x" * 201})
+
+    assert misspelt.status_code == 422
+    assert too_long.status_code == 422

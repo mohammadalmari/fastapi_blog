@@ -37,7 +37,7 @@ def test_invalid_usernames_are_refused(username: object) -> None:
         ("jane@example.com", "jane@example.com"),
         ("Jane@Example.COM", "jane@example.com"),
         # "e" + a combining accent becomes the single composed character.
-        ("josé@example.com", "josé@example.com"),
+        ("jose\u0301@example.com", "josé@example.com"),
     ],
 )
 def test_emails_are_normalized(typed: str, stored: str) -> None:
@@ -61,7 +61,7 @@ def test_passwords_outside_the_length_bounds_are_refused(password: str) -> None:
     [
         ("jane@example.com", ("email", "jane@example.com")),
         (" JANE@Example.com ", ("email", "jane@example.com")),
-        ("josé@example.com", ("email", "josé@example.com")),
+        ("jose\u0301@example.com", ("email", "josé@example.com")),
         ("not an email@", ("email", "not an email@")),  # can't match anyone
         ("jane", ("username", "jane")),
         (" Jane ", ("username", "jane")),

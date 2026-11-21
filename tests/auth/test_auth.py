@@ -163,7 +163,7 @@ async def test_login_with_email_or_username(client: AsyncClient, identifier: str
 async def test_login_finds_an_email_however_its_accents_were_typed(client: AsyncClient) -> None:
     # "é" written as "e" + a combining accent: a different string for the same
     # address. Register stores the composed form; login must find it.
-    decomposed = "josé@example.com"
+    decomposed = "jose\u0301@example.com"
     await register(client, email=decomposed)
 
     assert (await login(client, identifier=decomposed)).status_code == 200

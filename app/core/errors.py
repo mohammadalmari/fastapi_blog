@@ -6,6 +6,8 @@ logic doesn't depend on the web framework and can be called from a script or
 a test without one. The handlers at the bottom do the translation.
 """
 
+from typing import Literal
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -58,10 +60,13 @@ class FieldError(AppError):
 
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    def __init__(self, field: str, problems: list[str]) -> None:
+    def __init__(
+        self, field: str, problems: list[str], *, where: Literal["body", "query"] = "body"
+    ) -> None:
         super().__init__("; ".join(problems))
         self.field = field
         self.problems = problems
+        self.where = where
 
 
 class ErrorResponse(BaseModel):
@@ -79,7 +84,7 @@ async def _handle_app_error(request: Request, error: Exception) -> JSONResponse:
     assert isinstance(error, AppError)  # noqa: S101 - registered for AppError only
     if isinstance(error, FieldError):
         detail: object = [
-            {"type": "value_error", "loc": ["body", error.field], "msg": problem}
+            {"type": "value_error", "loc": [error.where, error.field], "msg": problem}
             for problem in error.problems
         ]
     else:

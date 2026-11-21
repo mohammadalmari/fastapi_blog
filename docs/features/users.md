@@ -7,6 +7,7 @@
 - The `users` collection, through `UserRepository`.
 - The internal `User` model and the public schemas.
 - `GET /api/v1/users/me` and `PUT /api/v1/users/{user_id}/roles`.
+  (`GET /api/v1/users/me/posts` is in the posts feature.)
 
 Signing up and logging in are in [auth.md](auth.md); deciding which roles a
 user may be given is in [rbac.md](rbac.md). This feature stores the result.
@@ -48,6 +49,11 @@ response.
 - **Uniqueness is the index's job.** `create` inserts and translates the
   duplicate-key error into `DuplicateUserError`, which says which field.
 - **A username has no "@"**, which is how login tells it from an email.
+- **Public routes look users up with `get_by_username`, never
+  `get_by_login`.** The second also matches emails, which are private; a
+  public route using it would reveal which emails have accounts.
+- **`get_many` fetches a page's users in one query**, for lists that show an
+  author beside each item.
 
 ## Key decisions
 

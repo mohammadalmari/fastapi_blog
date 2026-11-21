@@ -5,19 +5,23 @@ from typing import Annotated, Any
 
 from fastapi import Depends
 
-from app.auth.dependencies import CurrentUserDep
+from app.auth.dependencies import CurrentUserDep, OptionalUserDep
 from app.core.database import DbDep
 from app.core.errors import ForbiddenError
 from app.rbac.permissions import Perm
 from app.rbac.policy import FORBIDDEN, Principal
 from app.rbac.providers import RoleRepositoryDep, get_role_repository
+from app.rbac.repository import RoleRepository
 from app.rbac.service import RoleService
 from app.users.dependencies import UserRepositoryDep
+from app.users.models import User
 
 __all__ = [
+    "OptionalPrincipalDep",
     "PrincipalDep",
     "RoleRepositoryDep",
     "RoleServiceDep",
+    "get_optional_principal",
     "get_principal",
     "get_role_repository",
     "get_role_service",
@@ -40,12 +44,26 @@ async def get_principal(user: CurrentUserDep, roles: RoleRepositoryDep) -> Princ
     someone has, takes effect on their very next request. A role id that no
     longer matches a role is simply skipped.
     """
-    held = await roles.get_many(user.role_ids)
-    permissions = frozenset(permission for role in held for permission in role.permissions)
-    return Principal(user=user, roles=held, permissions=permissions)
+    return await _principal_of(user, roles)
 
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+async def get_optional_principal(
+    user: OptionalUserDep, roles: RoleRepositoryDep
+) -> Principal | None:
+    """The principal, or None for an anonymous visitor. For public routes."""
+    return await _principal_of(user, roles) if user else None
+
+
+OptionalPrincipalDep = Annotated[Principal | None, Depends(get_optional_principal)]
+
+
+async def _principal_of(user: User, roles: RoleRepository) -> Principal:
+    held = await roles.get_many(user.role_ids)
+    permissions = frozenset(permission for role in held for permission in role.permissions)
+    return Principal(user=user, roles=held, permissions=permissions)
 
 
 def require_permission(

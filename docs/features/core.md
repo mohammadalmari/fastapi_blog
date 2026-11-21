@@ -41,7 +41,7 @@ environment and ignore what the app was built with.
 | `ForbiddenError` | 403 | Not allowed to do this |
 | `NotFoundError` | 404 | It doesn't exist |
 | `ConflictError` | 409 | Clashes with what exists |
-| `FieldError` | 422 | A field failed a check Pydantic couldn't make, because it depends on settings or the database |
+| `FieldError` | 422 | A field or query parameter failed a check Pydantic couldn't make, because it depends on settings or the database |
 
 Services raise these, never FastAPI's `HTTPException`, so the business logic
 doesn't depend on the web framework. `FieldError` is rendered in the same

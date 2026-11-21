@@ -22,7 +22,8 @@ are served in debug mode only.
 - 401 means not logged in, 403 means logged in but not allowed, 409 means the
   request clashes with what exists.
 - Ids are 24-character hex strings. A malformed one is a 422, an unknown one
-  a 404.
+  a 404. A 404 is also the answer for something the caller may not know
+  exists, such as someone else's draft.
 
 ## Health
 
@@ -48,6 +49,26 @@ See [concepts/authentication.md](concepts/authentication.md).
 | ----- | ----- | ------------ |
 | `GET /api/v1/users/me` | Login | The caller's account, roles and effective permissions |
 | `PUT /api/v1/users/{user_id}/roles` | `users:assign_roles` | Replace a user's roles |
+
+## Posts
+
+See [features/posts.md](features/posts.md).
+
+| Route | Needs | What it does |
+| ----- | ----- | ------------ |
+| `GET /api/v1/posts` | Nothing | Published posts, newest first; `tag`, `author`, `limit` and `cursor` as query parameters |
+| `POST /api/v1/posts` | `posts:create` | Write a post; it starts as a draft |
+| `GET /api/v1/posts/{slug}` | Nothing for a published post | One post. A draft is shown to its author and to holders of any `posts:...:any` permission |
+| `PATCH /api/v1/posts/{post_id}` | `posts:update:own` on your post, or `posts:update:any`; for a published post also the permission to publish it | Edit a post |
+| `DELETE /api/v1/posts/{post_id}` | `posts:delete:own` on your post, or `posts:delete:any` | Delete a post |
+| `POST /api/v1/posts/{post_id}/publish` | `posts:publish:own` on your post, or `posts:publish:any` | Make a post public |
+| `POST /api/v1/posts/{post_id}/unpublish` | `posts:publish:own` on your post, or `posts:publish:any` | Turn it back into a draft |
+| `GET /api/v1/users/me/posts` | Login | The caller's own posts, drafts included; `status` filters |
+| `GET /api/v1/tags` | Nothing | The 100 most used tags on published posts, with their counts |
+
+Lists are paged by cursor: pass the `next_cursor` of one page as `cursor` to
+get the next, until it is null. A cursor belongs to the list that issued it.
+A query parameter a list doesn't have is a 422, not ignored.
 
 ## Roles and permissions
 

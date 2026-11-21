@@ -10,6 +10,8 @@ this page is about the code.
 - The `refresh_tokens` collection.
 - `get_current_user` and `CurrentUserDep`, which every protected route in the
   app depends on, directly or through the principal.
+- `get_optional_user` and `OptionalUserDep`, for public routes that show more
+  to a logged-in user: None without a token, and still a 401 for a bad one.
 
 It does not own users. It creates and reads them through `UserRepository`.
 

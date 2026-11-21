@@ -97,6 +97,14 @@ of the previous page, by its sort value and its id, and the next page is
 "everything after that item". Deep pages stay fast, and items don't repeat
 or go missing when new ones arrive.
 
+- **The index must end with the sort field and then `_id`.** The list sorts
+  by both, and an index that stops at the sort field makes MongoDB load every
+  match and sort it in memory.
+- **A cursor is not signed**, so a client can send anything. `decode_cursor`
+  is where "anything" ends: what it lets through is a real date and a real
+  id. A forged cursor can only move the client's own position; the list's
+  filters are applied separately, so it cannot widen what the list contains.
+
 ## What a first-time reader should know
 
 - A model is the read schema for every stored document, old ones included. A
