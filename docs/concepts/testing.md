@@ -19,10 +19,16 @@ response.
 | ---- | ----- |
 | Fixtures | `tests/conftest.py` |
 | Request helpers and shared constants | `tests/helpers.py` |
-| HTTP tests, one module per feature | `tests/test_auth.py`, `tests/test_roles.py`, ... |
-| Unit tests of pure rules | `tests/test_passwords.py`, `tests/test_tokens.py`, `tests/test_user_schemas.py`, `tests/test_role_schemas.py`, `tests/test_rbac_rules.py` |
+| Tests, in a folder per feature that mirrors `app/` | `tests/core/`, `tests/auth/`, `tests/users/`, `tests/rbac/` |
+| HTTP tests | `tests/auth/test_auth.py`, `tests/rbac/test_roles.py`, ... |
+| Unit tests of pure rules | `tests/core/test_passwords.py`, `tests/core/test_tokens.py`, `tests/users/test_user_schemas.py`, `tests/rbac/test_role_schemas.py`, `tests/rbac/test_rbac_rules.py` |
 
 ## How the tests are set up
+
+- **A folder per feature.** `app/rbac/` is tested in `tests/rbac/`. Tests
+  are not inside `app/`: that folder is copied whole into the production
+  image, and many tests cross features, as do the fixtures. A feature folder
+  may have its own `conftest.py` for fixtures only it needs.
 
 - **A real MongoDB.** Nothing is mocked by default. Each run uses a database
   with a random name, one per worker when parallel, dropped at the end.

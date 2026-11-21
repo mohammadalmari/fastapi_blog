@@ -100,7 +100,7 @@ if principal.can(any_=Perm.POSTS_READ_DRAFTS_ANY, owner_id=post.author_id): ...
 
 ## Tests
 
-`tests/test_roles.py` over HTTP, including the escalation and race tests;
-`tests/test_rbac_sync.py` for startup; `tests/test_seed.py` and
-`tests/test_seed_cli.py` for the command; unit tests in
-`tests/test_rbac_rules.py` and `tests/test_role_schemas.py`.
+`tests/rbac/test_roles.py` over HTTP, including the escalation and race tests;
+`tests/rbac/test_rbac_sync.py` for startup; `tests/rbac/test_seed.py` and
+`tests/rbac/test_seed_cli.py` for the command; unit tests in
+`tests/rbac/test_rbac_rules.py` and `tests/rbac/test_role_schemas.py`.

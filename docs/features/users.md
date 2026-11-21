@@ -67,5 +67,5 @@ apply the last-active-admin rule: see [rbac.md](rbac.md).
 
 ## Tests
 
-`tests/test_users.py` over HTTP, and `tests/test_user_schemas.py` for the
+`tests/users/test_users.py` over HTTP, and `tests/users/test_user_schemas.py` for the
 normalization and validation rules.

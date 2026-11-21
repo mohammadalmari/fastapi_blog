@@ -32,7 +32,7 @@ def register_indexes(collection: str, indexes: list[IndexModel]) -> None:
 
     Each repository module calls this once at import. That only works for
     modules that get imported, which today means reachable from a router that
-    ``app.main`` includes; ``tests/test_database.py`` checks the result.
+    ``app.main`` includes; ``tests/core/test_database.py`` checks the result.
     """
     if collection in _indexes:
         raise RuntimeError(f"Indexes for {collection!r} are registered twice")

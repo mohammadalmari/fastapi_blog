@@ -64,7 +64,7 @@ It does not own users. It creates and reads them through `UserRepository`.
 
 ## Tests
 
-`tests/test_auth.py` over HTTP, `tests/test_auth_production.py` for what only
+`tests/auth/test_auth.py` over HTTP, `tests/auth/test_auth_production.py` for what only
 exists in production mode (the `Secure` cookie, the strict password policy,
-the Origin check), and unit tests in `tests/test_tokens.py` and
-`tests/test_passwords.py`.
+the Origin check), and unit tests in `tests/core/test_tokens.py` and
+`tests/core/test_passwords.py`.
