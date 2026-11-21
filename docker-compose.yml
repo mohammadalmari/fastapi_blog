@@ -1,8 +1,29 @@
-# Local development services. Not a production setup: MongoDB runs without
-# authentication, which is acceptable only because the port is bound to
-# 127.0.0.1.
+# Local development. Not a production setup: the API runs in debug mode and
+# MongoDB has no authentication, which is acceptable only because both ports
+# are bound to 127.0.0.1.
+#
+#   docker compose up -d --wait          the API and MongoDB
+#   docker compose up -d --wait mongo    MongoDB only (API and tests on the host)
 services:
-  mongo:
+  api:
+    build:
+      context: .
+      target: development
+    environment:
+      FASTAPI_DEBUG: "true"
+      # Inside the Compose network the database is reachable as "mongo".
+      # directConnection skips replica-set discovery, which would hand back
+      # the member's own name, localhost:27017, meaning this container.
+      # Transactions still work.
+      DATABASE_URL: mongodb://mongo:27017/?directConnection=true
+    volumes:
+      # The project is mounted over the image's app directory, so edits on the
+      # host reload the server. A .env file, if present, is read from here.
+      - ./:/usr/src/app
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      mongo:
         condition: service_healthy
     healthcheck:
       test: >

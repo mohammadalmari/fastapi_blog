@@ -11,19 +11,51 @@ authorization with dynamic, admin-managed roles and permissions.
 
 ## Getting started
 
+Either way the API runs at http://127.0.0.1:8000 and interactive docs at
+http://127.0.0.1:8000/docs.
+
+### Everything in Docker
+
+```bash
+docker compose up -d --wait
+```
+
+This builds the development image and starts the API and MongoDB. The project
+folder is mounted into the container, so the server reloads when you edit a
+file. Useful commands:
+
+```bash
+docker compose logs -f api          # follow the server log
+docker compose exec api pytest      # run the tests in the container
+docker compose up -d --build        # rebuild after changing dependencies
+docker compose down                 # stop; add -v to also delete the data
+```
+
+### API on your machine
+
 ```bash
 uv sync
 cp .env.example .env
-docker compose up -d --wait
 uv run fastapi dev
 ```
 
-The API runs at http://127.0.0.1:8000 and interactive docs at http://127.0.0.1:8000/docs.
+Use one way at a time: both serve on port 8000.
 
-`docker compose up` starts MongoDB as a single-node replica set on
-`localhost:27017`, which the app needs for transactions. The app pings the
-database at startup and refuses to start if it can't reach it. Stop MongoDB
-with `docker compose down`; add `-v` to also delete its data.
+The API needs a MongoDB to talk to, and `DATABASE_URL` in `.env` says where
+it is. Any MongoDB works, local or hosted (MongoDB Atlas, for example), as
+long as it is a replica set: the app uses transactions, which a standalone
+server doesn't have. Hosted clusters are replica sets already.
+
+For a local one, this starts only the database from the Compose file, as a
+single-node replica set on `localhost:27017`, which is what `.env.example`
+points at:
+
+```bash
+docker compose up -d --wait mongo
+```
+
+The app pings the database at startup and refuses to start if it can't reach
+it.
 
 ## Configuration
 
@@ -45,6 +77,18 @@ Behind a TLS-terminating proxy the server must trust the proxy's
 `--forwarded-allow-ips` (or a real `FORWARDED_ALLOW_IPS` environment variable;
 it is not read from `.env`) names the proxy to trust.
 
+The same thing as a container image:
+
+```bash
+docker build --target production -t fastapi-blog .
+```
+
+The image holds only the runtime dependencies and the `app/` package, runs as
+a non-root user, and contains no `.env`: pass `FASTAPI_SECRET_KEY`,
+`FASTAPI_ALLOWED_HOSTS`, `DATABASE_URL` and `FORWARDED_ALLOW_IPS` as
+environment variables. It expects a TLS-terminating proxy in front of it,
+which this repository doesn't provide.
+
 ## Development
 
 ```bash
@@ -54,6 +98,8 @@ uv run ty check            # type check
 uv run pytest              # tests
 ```
 
-The tests need MongoDB running (`docker compose up -d --wait`). They use a
-database with a random name and drop it afterwards, so they never touch your
-development data.
+The tests need a reachable MongoDB replica set: the one from
+`docker compose up -d --wait mongo`, or whatever a `DATABASE_URL` environment
+variable points at (the tests ignore `.env`). They use a database with a
+random name and drop it afterwards, so they never touch your development
+data.

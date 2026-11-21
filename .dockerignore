@@ -1,0 +1,32 @@
+# Kept out of the Docker build context: smaller, faster builds, and no secrets
+# or local state in an image.
+
+# Secrets and local configuration
+.env
+.env.*
+
+# Virtualenv and caches (the image builds its own)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Version control, editors, OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Runtime data
+logs/
+media/
+*.log
+
+# Not needed to build
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
+tests/
