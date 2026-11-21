@@ -9,9 +9,11 @@ This module only holds the *values*. They are enforced by
 ``app.core.security`` (middleware, password hashing and validation).
 """
 
+from typing import Literal
+
 from pydantic import Field, ValidationInfo, field_validator
 
-from .environment import CommaSeparated, EnvironmentSettings, is_debug
+from .environment import API_PREFIX, CommaSeparated, EnvironmentSettings, is_debug
 
 # ---------------------------------------------------------------------------
 # Passwords
@@ -22,6 +24,10 @@ PASSWORD_MIN_LENGTH = 12  # Stronger than the common default of 8
 # Argon2 has no length limit of its own; cap it so a huge "password" can't be
 # used to burn CPU and memory on hashing.
 PASSWORD_MAX_LENGTH = 128
+# How many passwords may be hashed at the same moment. Each Argon2 hash takes
+# about 64 MiB and several CPU threads, so this caps what a burst of logins
+# can cost: 4 x 64 MiB. Further requests wait their turn.
+PASSWORD_HASH_CONCURRENCY = 4
 
 # ---------------------------------------------------------------------------
 # Request size limits
@@ -74,8 +80,8 @@ CORS_ALLOW_HEADERS = ["Authorization", "Content-Type"]
 # ---------------------------------------------------------------------------
 
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_PATH = "/api/v1/auth"  # Only sent to the auth endpoints
-REFRESH_COOKIE_SAMESITE = "strict"
+REFRESH_COOKIE_PATH = f"{API_PREFIX}/auth"  # Only sent to the auth endpoints
+REFRESH_COOKIE_SAMESITE: Literal["strict"] = "strict"
 
 
 class SecuritySettings(EnvironmentSettings):

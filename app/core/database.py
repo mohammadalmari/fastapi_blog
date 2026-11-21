@@ -3,6 +3,7 @@ MongoDB access through PyMongo's native async client. There is no ODM:
 repositories work with plain documents and map them to Pydantic models by hand.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
@@ -19,9 +20,31 @@ type Database = AsyncDatabase[Document]
 # default is 30 seconds, which makes "Mongo isn't running" slow to notice.
 SERVER_SELECTION_TIMEOUT_MS = 5000
 
-# Indexes per collection. Each feature adds its own entry here; they are
-# created at startup. Creating an index that already exists does nothing.
-INDEXES: dict[str, list[IndexModel]] = {}
+_indexes: dict[str, list[IndexModel]] = {}
+
+
+def register_indexes(collection: str, indexes: list[IndexModel]) -> None:
+    """
+    Declare a collection's indexes; they are created at startup.
+
+    Each repository module calls this once at import. That only works for
+    modules that get imported, which today means reachable from a router that
+    ``app.main`` includes; ``tests/test_database.py`` checks the result.
+    """
+    if collection in _indexes:
+        raise RuntimeError(f"Indexes for {collection!r} are registered twice")
+    _indexes[collection] = indexes
+
+
+def utcnow() -> datetime:
+    """
+    The current time as MongoDB will store it: UTC, to the millisecond.
+
+    BSON dates have no microseconds. Truncating up front means a document we
+    just built and the same document read back hold the same timestamp.
+    """
+    now = datetime.now(UTC)
+    return now.replace(microsecond=now.microsecond // 1000 * 1000)
 
 
 def create_client(settings: Settings) -> Client:
@@ -39,11 +62,15 @@ def create_client(settings: Settings) -> Client:
 
 
 async def ensure_indexes(db: Database) -> None:
-    for collection, indexes in INDEXES.items():
+    # Creating an index that already exists does nothing. Changing the options
+    # of an existing one fails here: drop the old index in the same change.
+    for collection, indexes in _indexes.items():
         await db[collection].create_indexes(indexes)
 
 
-def get_db(request: Request) -> Database:
+# `async def` although nothing is awaited: FastAPI runs plain `def`
+# dependencies in its thread pool, which is a wasted thread hop for a lookup.
+async def get_db(request: Request) -> Database:
     """The database opened by the app's lifespan (see ``app.main``)."""
     return request.app.state.db
 

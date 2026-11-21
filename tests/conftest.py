@@ -15,6 +15,8 @@ module.
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from pathlib import Path
+from typing import Any
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -32,6 +34,7 @@ from app.core.database import Database
 from app.core.settings import Settings
 from app.core.settings.environment import ROOT_DIR
 from app.main import create_app
+from tests.helpers import ACCESS_TOKEN_TTL_MINUTES, REFRESH_TOKEN_TTL_DAYS
 
 
 class DatabaseUrls(BaseSettings):
@@ -62,10 +65,33 @@ def database_url() -> SecretStr | None:
 
 
 @pytest.fixture
-def settings(database_name: str, database_url: SecretStr | None) -> Settings:
+def settings_overrides() -> dict[str, Any]:
+    """Override in a test module to build the app with other settings."""
+    return {}
+
+
+@pytest.fixture
+def settings(
+    database_name: str,
+    database_url: SecretStr | None,
+    settings_overrides: dict[str, Any],
+    tmp_path: Path,
+) -> Settings:
+    values: dict[str, Any] = {
+        "debug": True,
+        # Pinned, so that FASTAPI_* variables in the shell can't change what
+        # the tests assert on.
+        "access_token_ttl_minutes": ACCESS_TOKEN_TTL_MINUTES,
+        "refresh_token_ttl_days": REFRESH_TOKEN_TTL_DAYS,
+        "cors_allowed_origins": [],
+        "cors_allow_credentials": False,
+        # Production-mode apps write log files; keep them out of the project.
+        "log_dir": tmp_path / "logs",
+        **settings_overrides,
+    }
     # `_env_file=None`: apart from the database URL above, ignore the
     # developer's .env so runs are repeatable.
-    settings = Settings(_env_file=None, debug=True, DATABASE_NAME=database_name)
+    settings = Settings(_env_file=None, DATABASE_NAME=database_name, **values)
     if database_url is not None:
         settings = settings.model_copy(update={"database_url": database_url})
     return settings

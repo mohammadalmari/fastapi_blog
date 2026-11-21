@@ -22,13 +22,15 @@ or, in a route or another dependency, declare a ``SettingsDep`` parameter::
     @router.get("/info")
     async def info(settings: SettingsDep) -> ...: ...
 
-Tests swap the settings with ``app.dependency_overrides[get_settings]``.
+``SettingsDep`` hands out the settings the running app was built with
+(``create_app(settings)`` stores them on ``app.state``), which in tests are not
+the ones from the environment. ``get_settings()`` always reads the environment.
 """
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, cast
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from .security import SecuritySettings
 from .services import ServicesSettings
@@ -44,6 +46,11 @@ def get_settings() -> Settings:
     return Settings()
 
 
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+async def get_app_settings(request: Request) -> Settings:
+    """The settings of the app handling this request."""
+    return cast(Settings, request.app.state.settings)
 
-__all__ = ["Settings", "SettingsDep", "get_settings"]
+
+SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+
+__all__ = ["Settings", "SettingsDep", "get_app_settings", "get_settings"]

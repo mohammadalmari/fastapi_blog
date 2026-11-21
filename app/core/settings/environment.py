@@ -33,6 +33,9 @@ DEV_SECRET_KEY = "dev-only-insecure-key-never-use-in-production"  # noqa: S105
 
 MIN_SECRET_KEY_LENGTH = 32
 
+# Every feature router is mounted under this prefix (see app.main).
+API_PREFIX = "/api/v1"
+
 _DEV_HOSTS = ("localhost", "127.0.0.1")
 
 

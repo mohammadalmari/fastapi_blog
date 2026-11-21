@@ -20,7 +20,8 @@ select = [
 ]
 
 [lint.per-file-ignores]
-"tests/**" = ["S101"] # allow assert in tests
+# In tests: asserts are the point, and passwords and tokens are test data.
+"tests/**" = ["S101", "S105", "S106"]
 
 [lint.mccabe]
 max-complexity = 10

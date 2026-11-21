@@ -1,15 +1,20 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from asyncer import asyncify
+from fastapi import APIRouter, FastAPI
 
+from app.auth.router import router as auth_router
 from app.core import health
 from app.core.database import create_client, ensure_indexes
+from app.core.errors import install_error_handlers
 from app.core.logs import configure_logging
-from app.core.security import install_security
+from app.core.security import dummy_hash, install_security
 from app.core.security.middleware import OPENAPI_URL
 from app.core.settings import Settings, get_settings
+from app.core.settings.environment import API_PREFIX
 from app.core.settings.security import MAX_BODY_SIZE
+from app.users.router import router as users_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -35,6 +40,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await db.command("ping")
             await ensure_indexes(db)
             app.state.db = db
+            # Computed now so that the first login for an unknown account isn't
+            # slower than later ones.
+            await asyncify(dummy_hash)()
             yield
         finally:
             await client.close()
@@ -48,8 +56,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=OPENAPI_URL if settings.docs_enabled else None,
         max_body_size=MAX_BODY_SIZE,
     )
+    # Where `SettingsDep` finds them: routes get the settings this app was
+    # built with, which in tests are not the ones from the environment.
+    app.state.settings = settings
+
     install_security(app, settings)
+    install_error_handlers(app)
     app.include_router(health.router)
+
+    # Each feature router sets its own prefix and tags; this adds the version.
+    api = APIRouter(prefix=API_PREFIX)
+    api.include_router(auth_router)
+    api.include_router(users_router)
+    app.include_router(api)
 
     return app
 

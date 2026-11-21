@@ -61,3 +61,18 @@ async def test_an_aborted_transaction_writes_nothing(db: Database) -> None:
         await session.abort_transaction()
 
     assert await db.things.count_documents({}) == 0
+
+
+async def test_startup_creates_every_feature_index(db: Database) -> None:
+    """
+    Indexes are registered when a repository module is imported. This catches
+    a repository whose module never is, which would silently run without its
+    indexes, and for `users` that means without uniqueness.
+    """
+    users = await db.users.index_information()
+    tokens = await db.refresh_tokens.index_information()
+
+    assert users["email_1"]["unique"] is True
+    assert users["username_1"]["unique"] is True
+    assert tokens["expires_at_1"]["expireAfterSeconds"] == 0
+    assert {"user_id_1", "family_id_1"} <= set(tokens)

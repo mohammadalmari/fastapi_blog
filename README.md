@@ -57,6 +57,26 @@ docker compose up -d --wait mongo
 The app pings the database at startup and refuses to start if it can't reach
 it.
 
+## Accounts and login
+
+All routes are under `/api/v1`; `/docs` lists them and its "Authorize" button
+logs you in.
+
+| Route | What it does |
+|---|---|
+| `POST /auth/register` | Create an account (JSON: `email`, `username`, `password`) |
+| `POST /auth/login` | Log in with an email or username (form: `username`, `password`) |
+| `POST /auth/refresh` | Get a new access token using the refresh cookie |
+| `POST /auth/logout` | End this session |
+| `POST /auth/logout-all` | End every session of the logged-in user |
+| `GET /users/me` | The logged-in user |
+
+Login returns a short-lived access token (15 minutes) to send as
+`Authorization: Bearer <token>`, and sets a long-lived refresh token (14 days)
+in an HttpOnly cookie that only the `/auth` routes receive. Each refresh
+replaces the refresh token; presenting an already-used one ends that session.
+Logging out ends the whole session, and errors come back as `{"detail": ...}`.
+
 ## Configuration
 
 Settings are read from environment variables, falling back to `.env`; see
