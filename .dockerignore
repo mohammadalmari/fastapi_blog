@@ -29,6 +29,7 @@ Dockerfile
 .dockerignore
 docker-compose.yml
 README.md
+docs/
 tests/
 
 # Test coverage data

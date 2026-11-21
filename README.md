@@ -1,18 +1,28 @@
 # FastAPI Blog
 
-A multi-user blog API built with FastAPI, featuring authentication and
-authorization with dynamic, admin-managed roles and permissions.
+A multi-user blog API built with FastAPI, with authentication and
+authorization through roles and permissions that administrators manage while
+the app runs.
 
-## Tooling
+Built with [uv](https://docs.astral.sh/uv/) (dependencies),
+[ruff](https://docs.astral.sh/ruff/) (lint and format),
+[ty](https://docs.astral.sh/ty/) (types), pytest, and MongoDB through
+PyMongo's async client.
 
-- [uv](https://docs.astral.sh/uv/) — dependency and environment management
-- [ruff](https://docs.astral.sh/ruff/) — linting and formatting
-- [ty](https://docs.astral.sh/ty/) — type checking
+## Documentation
+
+| | |
+| - | - |
+| [API overview](docs/api.md) | Every route and what it needs |
+| [Concepts](docs/concepts/index.md) | [Authentication](docs/concepts/authentication.md), [roles and permissions](docs/concepts/roles-and-permissions.md), [security](docs/concepts/security.md), [the database](docs/concepts/database.md), [testing](docs/concepts/testing.md) |
+| [Features](docs/features/index.md) | One page per folder under `app/` |
+
+With the app running in debug mode, the full API reference is at
+http://127.0.0.1:8000/docs.
 
 ## Getting started
 
-Either way the API runs at http://127.0.0.1:8000 and interactive docs at
-http://127.0.0.1:8000/docs.
+Either way the API runs at http://127.0.0.1:8000.
 
 ### Everything in Docker
 
@@ -22,7 +32,7 @@ docker compose up -d --wait
 
 This builds the development image and starts the API and MongoDB. The project
 folder is mounted into the container, so the server reloads when you edit a
-file. Useful commands:
+file.
 
 ```bash
 docker compose logs -f api          # follow the server log
@@ -41,97 +51,38 @@ uv run fastapi dev
 
 Use one way at a time: both serve on port 8000.
 
-The API needs a MongoDB to talk to, and `DATABASE_URL` in `.env` says where
-it is. Any MongoDB works, local or hosted (MongoDB Atlas, for example), as
-long as it is a replica set: the app uses transactions, which a standalone
-server doesn't have. Hosted clusters are replica sets already.
-
-For a local one, this starts only the database from the Compose file, as a
-single-node replica set on `localhost:27017`, which is what `.env.example`
-points at:
+The API needs a MongoDB, and `DATABASE_URL` in `.env` says where it is. Any
+MongoDB works, local or hosted, as long as it is a replica set: the app uses
+transactions, which a standalone server doesn't have. For a local one, this
+starts only the database from the Compose file:
 
 ```bash
 docker compose up -d --wait mongo
 ```
 
-The app pings the database at startup and refuses to start if it can't reach
-it.
+### The first administrator
 
-## Accounts and login
-
-All routes are under `/api/v1`; `/docs` lists them and its "Authorize" button
-logs you in.
-
-| Route | What it does |
-|---|---|
-| `POST /auth/register` | Create an account (JSON: `email`, `username`, `password`) |
-| `POST /auth/login` | Log in with an email or username (form: `username`, `password`) |
-| `POST /auth/refresh` | Get a new access token using the refresh cookie |
-| `POST /auth/logout` | End this session |
-| `POST /auth/logout-all` | End every session of the logged-in user |
-| `GET /users/me` | The logged-in user |
-
-Login returns a short-lived access token (15 minutes) to send as
-`Authorization: Bearer <token>`, and sets a long-lived refresh token (14 days)
-in an HttpOnly cookie that only the `/auth` routes receive. Each refresh
-replaces the refresh token; presenting an already-used one ends that session.
-Logging out ends the whole session, and errors come back as `{"detail": ...}`.
-
-## Roles and permissions
-
-What a user may do is decided by their roles. A permission is a fixed name in
-the code, such as `posts:update:own`; a role is a set of permissions that
-administrators create and edit while the app runs; a user can hold several
-roles and may do whatever any of them allows.
-
-| Route | Needs | What it does |
-|---|---|---|
-| `GET /permissions` | `roles:read` | Every permission that exists |
-| `GET /roles`, `GET /roles/{id}` | `roles:read` | List or read roles |
-| `POST /roles` | `roles:create` | Create a role |
-| `PATCH /roles/{id}` | `roles:update` | Edit a role; `is_default: true` makes it the role new accounts get |
-| `DELETE /roles/{id}` | `roles:delete` | Delete a role and take it from its holders |
-| `PUT /users/{id}/roles` | `users:assign_roles` | Replace a user's roles |
-
-`GET /users/me` lists the caller's roles and the permissions they add up to.
-Changes take effect on the user's next request.
-
-Two roles are built in and can't be deleted or renamed: `admin`, which always
-holds every permission, and `reader`, which new accounts get. The app creates
-them at startup. The last active admin can't be demoted, and `admin` can't be
-made the default role.
-
-Nobody can grant what they don't hold: you may only put permissions you have
-into a role, and only give or take away roles whose permissions you have. That
-is what makes `roles:update` and `users:assign_roles` safe to hand to someone
-who is not a full administrator.
-
-To create the first administrator, and the optional `author`, `moderator` and
-`editor` roles:
+New accounts get the `reader` role. To create an admin, and the optional
+`author`, `moderator` and `editor` roles:
 
 ```bash
 uv run python -m app.scripts.seed --email you@example.com --username you
 ```
 
 It asks for a password. In Docker, put `docker compose exec api` in front and
-drop `uv run`. It never overwrites a role or a password.
-
-If the email already has an account, the command refuses: sign-up is open, so
-that account may not be yours. To give an existing account the admin role, say
-so explicitly (no password is asked, and the account's own is kept):
-
-```bash
-uv run python -m app.scripts.seed --email you@example.com --promote
-```
+drop `uv run`. To make an account that already exists an admin, use
+`--email you@example.com --promote`.
 
 ## Configuration
 
-Settings are read from environment variables, falling back to `.env`; see
-`.env.example` for every variable. `FASTAPI_DEBUG` is the one switch between
-development and production behaviour, and production is the default: without
-`FASTAPI_DEBUG=true` the app refuses to start unless `FASTAPI_SECRET_KEY` and
-`FASTAPI_ALLOWED_HOSTS` are set, serves no interactive docs, redirects HTTP to
-HTTPS, and only allows the CORS origins you list.
+Settings come from environment variables, falling back to `.env`;
+`.env.example` lists every variable.
+
+`FASTAPI_DEBUG` is the one switch between development and production, and
+production is the default. Without `FASTAPI_DEBUG=true` the app refuses to
+start unless `FASTAPI_SECRET_KEY` and `FASTAPI_ALLOWED_HOSTS` are set, serves
+no interactive docs, redirects HTTP to HTTPS, and allows only the CORS origins
+you list. [Security](docs/concepts/security.md) has the full table.
 
 ### Running in production
 
@@ -140,11 +91,9 @@ uv run fastapi run --forwarded-allow-ips=<proxy ip>
 ```
 
 Behind a TLS-terminating proxy the server must trust the proxy's
-`X-Forwarded-Proto` header, otherwise the HTTPS redirect loops forever.
-`--forwarded-allow-ips` (or a real `FORWARDED_ALLOW_IPS` environment variable;
-it is not read from `.env`) names the proxy to trust.
+`X-Forwarded-Proto` header, or the HTTPS redirect loops forever.
 
-The same thing as a container image:
+As a container image:
 
 ```bash
 docker build --target production -t fastapi-blog .
@@ -159,29 +108,14 @@ which this repository doesn't provide.
 ## Development
 
 ```bash
-uv run ruff check .        # lint
 uv run ruff format .       # format
+uv run ruff check .        # lint
 uv run ty check            # type check
 uv run pytest              # tests
 ```
 
-More ways to run the tests:
-
-```bash
-uv run pytest -n auto                                  # in parallel, one database per worker
-uv run pytest --cov=app --cov-report=term-missing      # show the lines no test reaches
-uv run pytest --durations=10                           # the ten slowest tests
-uv run pytest -p no:randomly                           # in file order
-```
-
-Tests run in a random order each time, to catch tests that depend on one
-another; the seed is printed at the top, and `-p randomly --randomly-seed=<n>`
-repeats an order. The whole suite takes about two seconds; the budget is two
-minutes.
-
-The tests need a reachable MongoDB replica set. They connect to
-`TEST_DATABASE_URL` if it is set, otherwise to `DATABASE_URL`, otherwise to
-the Compose database on `localhost:27017`; both variables can be in `.env` or
-the shell. On that server they use a database with a random name and drop it
-afterwards, so they never touch your development data and can safely share
-its server. The user in the URL must be allowed to create and drop databases.
+The tests need a reachable MongoDB replica set: `TEST_DATABASE_URL` if set,
+otherwise `DATABASE_URL`, otherwise the Compose database. They use a database
+with a random name and drop it afterwards, so they never touch your
+development data. [Testing](docs/concepts/testing.md) covers the rest,
+including running in parallel and measuring coverage.
