@@ -1,0 +1,40 @@
+# Local development services. Not a production setup: MongoDB runs without
+# authentication, which is acceptable only because the port is bound to
+# 127.0.0.1.
+services:
+  mongo:
+        condition: service_healthy
+    healthcheck:
+      test: >
+        python -c "import urllib.request;
+        urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  mongo:
+    image: mongo:8
+    # A single-node replica set. A standalone server has no transactions, and
+    # the app needs them (e.g. a like and its counter change together).
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # A replica set must be initiated once. The check does that on the first
+      # run and reports healthy from then on. The member is named
+      # localhost:27017 because that is the address used from the host.
+      test: >
+        mongosh --quiet --eval "
+        try { rs.status().ok }
+        catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }
+        "
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  mongo-data:

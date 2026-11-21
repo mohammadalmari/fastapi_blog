@@ -22,8 +22,10 @@ class ServicesSettings(EnvironmentSettings):
     # A single connection string, e.g.
     #   mongodb://user:pass@host:27017/?replicaSet=rs0
     # It can carry credentials, so it is kept out of reprs and logs.
+    # The default matches docker-compose.yml. MongoDB must be a replica set
+    # (a single node is enough): transactions don't exist on a standalone.
     database_url: SecretStr = Field(
-        default=SecretStr("mongodb://localhost:27017"),
+        default=SecretStr("mongodb://localhost:27017/?replicaSet=rs0"),
         validation_alias="DATABASE_URL",
     )
     database_name: str = Field(default="fastapi_blog", validation_alias="DATABASE_NAME")
