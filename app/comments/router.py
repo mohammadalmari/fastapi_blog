@@ -1,13 +1,13 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Response, status
+from fastapi import APIRouter, Depends, Response, status
 
-from app.comments.dependencies import CommentServiceDep
+from app.comments.dependencies import CommentId, CommentServiceDep
 from app.comments.models import CommentView
 from app.comments.schemas import CommentCreate, CommentPublic, CommentUpdate
+from app.core.caching import varies_by_login
 from app.core.errors import error_responses
 from app.core.pagination import Page, PageParamsDep
-from app.core.types import PyObjectId
 from app.posts.dependencies import PostId
 from app.rbac.dependencies import (
     LOGIN_OPTIONAL,
@@ -23,7 +23,6 @@ from app.rbac.policy import Principal
 post_comments_router = APIRouter(prefix="/posts/{post_id}/comments", tags=["comments"])
 comments_router = APIRouter(prefix="/comments", tags=["comments"])
 
-CommentId = Annotated[PyObjectId, Path(description="The comment's id.")]
 # As a parameter, because the routes need to know who is commenting.
 CommenterDep = Annotated[Principal, Depends(require_permission(Perm.COMMENTS_CREATE))]
 
@@ -47,18 +46,16 @@ def _body(view: CommentView) -> dict[str, Any]:
     """
     comment = view.comment
     content = None if comment.is_deleted else comment.content
-    return {**comment.model_dump(), "content": content, "author": view.author}
+    return {
+        **comment.model_dump(),
+        "content": content,
+        "author": view.author,
+        "liked_by_me": view.liked_by_me,
+    }
 
 
 def _page(views: list[CommentView], next_cursor: str | None) -> dict[str, Any]:
     return {"items": [_body(view) for view in views], "next_cursor": next_cursor}
-
-
-def _never_cache_for(principal: Principal | None, response: Response) -> None:
-    if principal is not None:
-        # What a logged-in caller sees may differ (the comments of their own
-        # draft), so no cache may keep it and hand it to someone else.
-        response.headers["Cache-Control"] = "private, no-store"
 
 
 @post_comments_router.get(
@@ -81,7 +78,9 @@ async def list_comments(
     views, next_cursor = await service.list_for_post(
         principal, post_id, after=params.after(), limit=params.limit
     )
-    _never_cache_for(principal, response)
+    # What a logged-in caller sees may differ: their likes, and the comments
+    # of their own draft.
+    varies_by_login(response, logged_in=principal is not None)
     return _page(views, next_cursor)
 
 
@@ -115,7 +114,9 @@ async def list_replies(
     views, next_cursor = await service.list_replies(
         principal, comment_id, after=params.after(), limit=params.limit
     )
-    _never_cache_for(principal, response)
+    # What a logged-in caller sees may differ: their likes, and the comments
+    # of their own draft.
+    varies_by_login(response, logged_in=principal is not None)
     return _page(views, next_cursor)
 
 

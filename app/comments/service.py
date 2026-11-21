@@ -1,5 +1,8 @@
 """Commenting on posts, replying, editing and deleting, and who may do which."""
 
+from collections.abc import Awaitable, Collection, Sequence
+from typing import Protocol
+
 from bson import ObjectId
 
 from app.comments.models import Comment, CommentView
@@ -29,6 +32,20 @@ class _ParentClosedError(Exception):
     """Inside a transaction: the comment took no reply at the moment of writing."""
 
 
+class CommentCleanup(Protocol):
+    """Something to run when a comment is deleted, inside the same transaction."""
+
+    def __call__(self, comment: Comment, *, session: Session) -> Awaitable[None]: ...
+
+
+class LikedLookup(Protocol):
+    """Which of these comments a user has liked."""
+
+    def __call__(
+        self, user_id: ObjectId, ids: Collection[ObjectId]
+    ) -> Awaitable[set[ObjectId]]: ...
+
+
 class CommentService:
     def __init__(
         self,
@@ -36,11 +53,18 @@ class CommentService:
         comments: CommentRepository,
         posts: PostRepository,
         users: UserRepository,
+        on_delete: Sequence[CommentCleanup] = (),
+        liked: LikedLookup | None = None,
     ) -> None:
         self._db = db
         self._comments = comments
         self._posts = posts
         self._users = users
+        # Likes build on comments, not the other way round. That feature
+        # registers what to remove with a comment and how to ask which
+        # comments someone has liked; this service depends on neither.
+        self._on_delete = on_delete
+        self._liked = liked
 
     # --- reading ------------------------------------------------------------
 
@@ -57,7 +81,7 @@ class CommentService:
         comments, next_cursor = await self._comments.list_for_post(
             post.id, after=after, limit=limit
         )
-        return await self._views(comments), next_cursor
+        return await self._views(principal, comments), next_cursor
 
     async def list_replies(
         self,
@@ -73,7 +97,7 @@ class CommentService:
         if parent.parent_id is not None:
             return [], None  # a reply has no replies
         comments, next_cursor = await self._comments.list_replies(parent, after=after, limit=limit)
-        return await self._views(comments), next_cursor
+        return await self._views(principal, comments), next_cursor
 
     # --- writing ------------------------------------------------------------
 
@@ -146,7 +170,8 @@ class CommentService:
                 raise NotFoundError(_NO_COMMENT)
             comment = updated
         # The check above passed, so the author is the caller.
-        return CommentView(comment, principal.user)
+        liked = await self._liked_among(principal, [comment])
+        return CommentView(comment, principal.user, comment.id in liked)
 
     async def delete(self, principal: Principal, comment_id: ObjectId) -> None:
         comment = await self._comments.get(comment_id)
@@ -172,6 +197,10 @@ class CommentService:
                 # counts from going down twice.
                 raise NotFoundError(_NO_COMMENT)
             await self._posts.remove_comment(comment.post_id, session=session)
+            # Whether the row went or stayed as a placeholder, what hung
+            # from the comment itself (its likes) goes.
+            for clean_up in self._on_delete:
+                await clean_up(comment, session=session)
 
         await in_transaction(self._db, work)
 
@@ -205,10 +234,23 @@ class CommentService:
             raise NotFoundError(_NO_COMMENT)
         return comment, post
 
-    async def _views(self, comments: list[Comment]) -> list[CommentView]:
+    async def _views(
+        self, principal: Principal | None, comments: list[Comment]
+    ) -> list[CommentView]:
         # One query for all the authors of a page, not one per comment. A
         # placeholder shows no author: its author is left out of the query,
         # so the lookup below finds nobody for it.
         live = [comment for comment in comments if not comment.is_deleted]
         authors = await self._users.get_many({comment.author_id for comment in live})
-        return [CommentView(comment, authors.get(comment.author_id)) for comment in comments]
+        liked = await self._liked_among(principal, live)
+        return [
+            CommentView(comment, authors.get(comment.author_id), comment.id in liked)
+            for comment in comments
+        ]
+
+    async def _liked_among(
+        self, principal: Principal | None, comments: list[Comment]
+    ) -> set[ObjectId]:
+        if principal is None or self._liked is None or not comments:
+            return set()
+        return await self._liked(principal.user.id, [comment.id for comment in comments])

@@ -56,11 +56,11 @@ See [features/posts.md](features/posts.md).
 
 | Route | Needs | What it does |
 | ----- | ----- | ------------ |
-| `GET /api/v1/posts` | Nothing | Published posts, newest first; `tag`, `author`, `limit` and `cursor` as query parameters |
+| `GET /api/v1/posts` | Nothing; with a login, `liked_by_me` is yours. A bad token is a 401 | Published posts, newest first; `tag`, `author`, `limit` and `cursor` as query parameters |
 | `POST /api/v1/posts` | `posts:create` | Write a post; it starts as a draft |
 | `GET /api/v1/posts/{slug}` | Nothing for a published post | One post. A draft is shown to its author and to holders of any `posts:...:any` permission |
 | `PATCH /api/v1/posts/{post_id}` | `posts:update:own` on your post, or `posts:update:any`; for a published post also the permission to publish it | Edit a post |
-| `DELETE /api/v1/posts/{post_id}` | `posts:delete:own` on your post, or `posts:delete:any` | Delete a post and its comments |
+| `DELETE /api/v1/posts/{post_id}` | `posts:delete:own` on your post, or `posts:delete:any` | Delete a post, its comments and the likes on them |
 | `POST /api/v1/posts/{post_id}/publish` | `posts:publish:own` on your post, or `posts:publish:any` | Make a post public |
 | `POST /api/v1/posts/{post_id}/unpublish` | `posts:publish:own` on your post, or `posts:publish:any` | Turn it back into a draft |
 | `GET /api/v1/users/me/posts` | Login | The caller's own posts, drafts included; `status` filters |
@@ -82,7 +82,20 @@ the post it is on.
 | `GET /api/v1/comments/{comment_id}/replies` | Nothing, if the post is visible | The replies to a comment, oldest first |
 | `POST /api/v1/comments/{comment_id}/replies` | `comments:create` | Reply to a comment; replies can't be replied to |
 | `PATCH /api/v1/comments/{comment_id}` | `comments:update:own`, on your own comment | Edit your comment |
-| `DELETE /api/v1/comments/{comment_id}` | `comments:delete:own` on your comment, or `comments:delete:any` | Delete a comment; if it has replies it stays as a placeholder with its content erased |
+| `DELETE /api/v1/comments/{comment_id}` | `comments:delete:own` on your comment, or `comments:delete:any` | Delete a comment; if it has replies it stays as a placeholder with its content erased. Its likes go either way |
+
+## Likes
+
+See [features/likes.md](features/likes.md). Each route answers 204 with no
+body, and sending one twice ends where sending it once does. Taking a like
+back answers 204 for any id, so it says nothing about the post or comment.
+
+| Route | Needs | What it does |
+| ----- | ----- | ------------ |
+| `PUT /api/v1/posts/{post_id}/like` | `likes:create`, and a post you can see | Like a post |
+| `DELETE /api/v1/posts/{post_id}/like` | Login | Take your like back |
+| `PUT /api/v1/comments/{comment_id}/like` | `likes:create`, and a comment you can see | Like a comment |
+| `DELETE /api/v1/comments/{comment_id}/like` | Login | Take your like back |
 
 ## Roles and permissions
 

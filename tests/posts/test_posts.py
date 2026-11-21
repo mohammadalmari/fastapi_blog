@@ -1065,9 +1065,10 @@ async def test_the_api_docs_show_which_routes_need_a_login(app: FastAPI) -> None
     def security(method: str, path: str) -> object:
         return paths[f"{API}{path}"][method].get("security")
 
-    assert security("get", "/posts") is None
     assert security("get", "/tags") is None
-    # With or without: the empty entry is how OpenAPI says "optional".
+    # With or without: the empty entry is how OpenAPI says "optional". The
+    # feed is public too, and with a login says which posts you liked.
+    assert security("get", "/posts") == [{"OAuth2PasswordBearer": []}, {}]
     assert security("get", "/posts/{slug}") == [{"OAuth2PasswordBearer": []}, {}]
     assert security("post", "/posts") == [{"OAuth2PasswordBearer": []}]
     assert security("patch", "/posts/{post_id}") == [{"OAuth2PasswordBearer": []}]

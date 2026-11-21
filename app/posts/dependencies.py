@@ -5,6 +5,7 @@ from fastapi import Depends, Path
 from app.comments.repository import CommentRepository
 from app.core.database import DbDep
 from app.core.types import PyObjectId
+from app.likes.repository import LikeRepository
 from app.posts.repository import PostRepository
 from app.posts.service import PostService
 from app.users.dependencies import UserRepositoryDep
@@ -23,11 +24,18 @@ PostRepositoryDep = Annotated[PostRepository, Depends(get_post_repository)]
 async def get_post_service(
     db: DbDep, posts: PostRepositoryDep, users: UserRepositoryDep
 ) -> PostService:
-    # Here is where "deleting a post deletes its comments" is wired up. The
-    # comment repository is built directly, not injected from the comments
-    # feature: comments depends on posts, and its `dependencies` module
-    # imports this one.
-    return PostService(db, posts, users, on_delete=[CommentRepository(db).delete_for_post])
+    # Here is where "deleting a post deletes its comments and likes" is wired
+    # up, and where posts learn which of them the caller has liked. The other
+    # features' repositories are built directly, not injected from their
+    # `dependencies` modules: those depend on posts and import this module.
+    likes = LikeRepository(db)
+    return PostService(
+        db,
+        posts,
+        users,
+        on_delete=[CommentRepository(db).delete_for_post, likes.delete_for_post],
+        liked=likes.liked_posts,
+    )
 
 
 PostServiceDep = Annotated[PostService, Depends(get_post_service)]

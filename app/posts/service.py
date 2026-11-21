@@ -1,6 +1,6 @@
 """Writing, publishing and reading posts, and who may do which."""
 
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Collection, Sequence
 from typing import Protocol
 
 from bson import ObjectId
@@ -26,6 +26,14 @@ class PostCleanup(Protocol):
     def __call__(self, post_id: ObjectId, *, session: Session) -> Awaitable[None]: ...
 
 
+class LikedLookup(Protocol):
+    """Which of these posts a user has liked."""
+
+    def __call__(
+        self, user_id: ObjectId, ids: Collection[ObjectId]
+    ) -> Awaitable[set[ObjectId]]: ...
+
+
 class PostService:
     def __init__(
         self,
@@ -33,15 +41,19 @@ class PostService:
         posts: PostRepository,
         users: UserRepository,
         on_delete: Sequence[PostCleanup] = (),
+        liked: LikedLookup | None = None,
     ) -> None:
         self._db = db
         self._posts = posts
         self._users = users
-        # What hangs from a post (its comments, later its likes) is removed
+        # What hangs from a post (its comments, its likes) is removed
         # with it. The features that own those things register how; this
         # service knows only that there may be something to clean up, and so
         # depends on none of them.
         self._on_delete = on_delete
+        # Likes are another feature's too. It registers how to ask "which of
+        # these has this user liked?"; with nothing registered, none are.
+        self._liked = liked
 
     # --- reading ------------------------------------------------------------
 
@@ -49,10 +61,16 @@ class PostService:
         post = await self._posts.get_by_slug(slug)
         if post is None or not may_see(principal, post):
             raise NotFoundError(_NOT_FOUND)
-        return await self._view(post)
+        return await self._view(principal, post)
 
     async def feed(
-        self, *, tag: str | None, author: str | None, after: CursorPosition | None, limit: int
+        self,
+        principal: Principal | None,
+        *,
+        tag: str | None,
+        author: str | None,
+        after: CursorPosition | None,
+        limit: int,
     ) -> tuple[list[PostView], str | None]:
         """Published posts, newest first, optionally of one tag or one author."""
         author_id = None
@@ -64,7 +82,7 @@ class PostService:
         posts, next_cursor = await self._posts.list_published(
             tag=tag, author_id=author_id, after=after, limit=limit
         )
-        return await self._views(posts), next_cursor
+        return await self._views(principal, posts), next_cursor
 
     async def mine(
         self,
@@ -78,7 +96,8 @@ class PostService:
         posts, next_cursor = await self._posts.list_by_author(
             principal.user.id, status=status, after=after, limit=limit
         )
-        return [PostView(post, principal.user) for post in posts], next_cursor
+        liked = await self._liked_among(principal, posts)
+        return [PostView(post, principal.user, post.id in liked) for post in posts], next_cursor
 
     async def tags(self) -> list[TagCount]:
         return await self._posts.tag_counts()
@@ -137,7 +156,7 @@ class PostService:
             if updated is None:  # deleted since we loaded it
                 raise NotFoundError(_NOT_FOUND)
             post = updated
-        return await self._view(post)
+        return await self._view(principal, post)
 
     async def set_published(
         self, principal: Principal, post_id: ObjectId, *, published: bool
@@ -155,7 +174,7 @@ class PostService:
             if updated is None:
                 raise NotFoundError(_NOT_FOUND)
             post = updated
-        return await self._view(post)
+        return await self._view(principal, post)
 
     async def delete(self, principal: Principal, post_id: ObjectId) -> None:
         post = await self._load(principal, post_id)
@@ -193,10 +212,18 @@ class PostService:
             raise NotFoundError(_NOT_FOUND)
         return post
 
-    async def _view(self, post: Post) -> PostView:
-        return PostView(post, await self._users.get(post.author_id))
+    async def _view(self, principal: Principal | None, post: Post) -> PostView:
+        liked = await self._liked_among(principal, [post])
+        return PostView(post, await self._users.get(post.author_id), post.id in liked)
 
-    async def _views(self, posts: list[Post]) -> list[PostView]:
-        # One query for all the authors of a page, not one per post.
+    async def _views(self, principal: Principal | None, posts: list[Post]) -> list[PostView]:
+        # One query for all the authors of a page, not one per post, and one
+        # more for which of them the caller has liked.
         authors = await self._users.get_many({post.author_id for post in posts})
-        return [PostView(post, authors.get(post.author_id)) for post in posts]
+        liked = await self._liked_among(principal, posts)
+        return [PostView(post, authors.get(post.author_id), post.id in liked) for post in posts]
+
+    async def _liked_among(self, principal: Principal | None, posts: list[Post]) -> set[ObjectId]:
+        if principal is None or self._liked is None or not posts:
+            return set()
+        return await self._liked(principal.user.id, [post.id for post in posts])

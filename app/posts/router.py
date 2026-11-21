@@ -2,6 +2,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
+from app.core.caching import never_cache, varies_by_login
 from app.core.errors import error_responses
 from app.core.pagination import Page
 from app.posts.dependencies import PostId, PostServiceDep
@@ -42,16 +43,24 @@ _WRITE_ERRORS = error_responses(
 # The internal post and its author go in whole; `response_model` keeps only the
 # public fields at every level, so the author is cut down to id and names.
 def _body(view: PostView) -> dict[str, Any]:
-    return {**view.post.model_dump(), "author": view.author}
+    return {**view.post.model_dump(), "author": view.author, "liked_by_me": view.liked_by_me}
 
 
 def _page(views: list[PostView], next_cursor: str | None) -> dict[str, Any]:
     return {"items": [_body(view) for view in views], "next_cursor": next_cursor}
 
 
-@posts_router.get("", response_model=Page[PostSummary])
+@posts_router.get(
+    "",
+    response_model=Page[PostSummary],
+    responses=error_responses(status.HTTP_401_UNAUTHORIZED),
+    openapi_extra=LOGIN_OPTIONAL,
+)
 async def list_posts(
-    params: Annotated[FeedParams, Query()], service: PostServiceDep
+    params: Annotated[FeedParams, Query()],
+    principal: OptionalPrincipalDep,
+    service: PostServiceDep,
+    response: Response,
 ) -> dict[str, Any]:
     """
     Published posts, newest first by first publication. Follow `next_cursor`
@@ -59,10 +68,13 @@ async def list_posts(
 
     A post that was unpublished and published again keeps its original place,
     so it can reappear among older posts rather than at the top.
+
+    No login is needed. With one, `liked_by_me` says which posts you liked.
     """
     views, next_cursor = await service.feed(
-        tag=params.tag, author=params.author, after=params.after(), limit=params.limit
+        principal, tag=params.tag, author=params.author, after=params.after(), limit=params.limit
     )
+    varies_by_login(response, logged_in=principal is not None)
     return _page(views, next_cursor)
 
 
@@ -100,10 +112,9 @@ async def read_post(
     and to those who may act on drafts, and is "not found" for everyone else.
     """
     view = await service.get_by_slug(principal, slug)
-    if principal is not None or view.post.status == "draft":
-        # What is returned depends on who asked, so no cache may keep it and
-        # hand it to someone else.
-        response.headers["Cache-Control"] = "private, no-store"
+    varies_by_login(response, logged_in=principal is not None)
+    if view.post.status == "draft":
+        never_cache(response)  # shown to some; nobody else may be handed it
     return _body(view)
 
 
@@ -150,9 +161,13 @@ async def unpublish_post(
     "", response_model=Page[PostSummary], responses=error_responses(status.HTTP_401_UNAUTHORIZED)
 )
 async def list_my_posts(
-    params: Annotated[MyPostsParams, Query()], principal: PrincipalDep, service: PostServiceDep
+    params: Annotated[MyPostsParams, Query()],
+    principal: PrincipalDep,
+    service: PostServiceDep,
+    response: Response,
 ) -> dict[str, Any]:
     """Your own posts, drafts included, most recently created first."""
+    never_cache(response)
     views, next_cursor = await service.mine(
         principal, status=params.status, after=params.after(), limit=params.limit
     )

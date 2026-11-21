@@ -107,6 +107,20 @@ class CommentRepository:
         )
         return result.modified_count == 1
 
+    async def add_like(self, comment_id: ObjectId, *, session: Session) -> bool:
+        """Count one more like on a comment. False if it is gone or deleted."""
+        result = await self._comments.update_one(
+            {"_id": comment_id, "is_deleted": False},
+            {"$inc": {"like_count": 1}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def remove_like(self, comment_id: ObjectId, *, session: Session) -> None:
+        await self._comments.update_one(
+            {"_id": comment_id}, {"$inc": {"like_count": -1}}, session=session
+        )
+
     async def remove(self, comment: Comment, *, session: Session) -> bool:
         """
         Delete a comment. False if it was already deleted.
@@ -145,7 +159,9 @@ class CommentRepository:
         # deleting is not editing.
         kept = await self._comments.update_one(
             {"_id": comment.id, "is_deleted": False},
-            {"$set": {"is_deleted": True, "content": ""}},
+            # Its likes are removed with what it said (the service sees to
+            # that), so the count of them goes back to nothing.
+            {"$set": {"is_deleted": True, "content": "", "like_count": 0}},
             session=session,
         )
         return kept.modified_count == 1

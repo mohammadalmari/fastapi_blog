@@ -27,8 +27,11 @@ def may_see(principal: Principal | None, post: Post) -> bool:
     shows or changes such things asks this first, and answers "not found"
     when it is False: a refusal would confirm that the post is there.
     """
-    if post.status == "published":
-        return True
+    return post.status == "published" or may_see_unpublished(principal, post)
+
+
+def may_see_unpublished(principal: Principal | None, post: Post) -> bool:
+    """Whether the post would be visible to them as a draft, whatever it is now."""
     if principal is None:
         return False
     if post.author_id == principal.user.id:

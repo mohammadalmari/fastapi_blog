@@ -40,7 +40,7 @@ It is the first feature to use the "own or any" permission check; see
 | `status` | `draft` or `published` |
 | `published_at` | Set the first time it is published, and kept after that |
 | `comment_count` | Live comments, replies included; kept by the comments feature |
-| `like_count` | Zero for now |
+| `like_count` | Kept by the likes feature, in the transaction that stores each like |
 | `created_at` | |
 | `updated_at` | When the text or tags last changed. Publishing does not move it |
 
@@ -126,8 +126,12 @@ longer edit them.
   `/posts/{post_id}` differ only in the parameter's name, which strict
   OpenAPI tooling may question. Accepted, for readable URLs.
 - **Deleting a post runs cleanup hooks in the same transaction.** The post
-  goes first, then whatever each feature registered: today its comments.
-  `PostService` imports nothing from those features.
+  goes first, then whatever each feature registered: its comments, and the
+  likes on it and on them. `PostService` imports nothing from those features.
+- **`liked_by_me` comes through a lookup that likes registers**, the same
+  way: one query per page, and false for everything when nobody is logged
+  in. The feed therefore takes an optional login, and is never cached when
+  read with one.
 - **Lists carry summaries.** The feed returns the excerpt, not the content.
 - **Authors are fetched once per page**, not once per post. A post whose
   author's account is gone is shown with `author: null`.
@@ -136,8 +140,6 @@ longer edit them.
 
 ## Not here yet
 
-- Deleting a post will also have to delete its likes once those exist.
-  `liked_by_me` arrives with likes.
 - `/tags` returns the 100 most used tags and counts them afresh on every
   request. It is a candidate for caching.
 - What happens to a deactivated author's posts is undecided; today they stay.

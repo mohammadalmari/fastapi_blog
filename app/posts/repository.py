@@ -107,8 +107,8 @@ class PostRepository:
             return _to_post(doc)
         raise SlugUnavailableError(base)
 
-    async def get(self, post_id: ObjectId) -> Post | None:
-        doc = await self._posts.find_one({"_id": post_id})
+    async def get(self, post_id: ObjectId, *, session: Session | None = None) -> Post | None:
+        doc = await self._posts.find_one({"_id": post_id}, session=session)
         return _to_post(doc) if doc else None
 
     async def get_by_slug(self, slug: str) -> Post | None:
@@ -159,6 +159,25 @@ class PostRepository:
     async def remove_comment(self, post_id: ObjectId, *, session: Session) -> None:
         await self._posts.update_one(
             {"_id": post_id}, {"$inc": {"comment_count": -1}}, session=session
+        )
+
+    async def add_like(self, post_id: ObjectId, *, published_only: bool, session: Session) -> bool:
+        """
+        Count one more like on a post. False if the post is gone, or is a
+        draft when only a published post will do.
+
+        As with `add_comment`, the condition is part of the update, so it
+        holds at the moment of writing.
+        """
+        query: Document = {"_id": post_id}
+        if published_only:
+            query["status"] = "published"
+        result = await self._posts.update_one(query, {"$inc": {"like_count": 1}}, session=session)
+        return result.modified_count == 1
+
+    async def remove_like(self, post_id: ObjectId, *, session: Session) -> None:
+        await self._posts.update_one(
+            {"_id": post_id}, {"$inc": {"like_count": -1}}, session=session
         )
 
     async def list_published(

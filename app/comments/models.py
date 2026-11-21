@@ -36,3 +36,5 @@ class CommentView:
 
     comment: Comment
     author: User | None
+    # Whether the person asking has liked it. False for a visitor.
+    liked_by_me: bool = False

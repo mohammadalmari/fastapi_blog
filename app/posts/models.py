@@ -43,6 +43,8 @@ class PostView:
     post: Post
     # None when the account has been removed; the post stays.
     author: User | None
+    # Whether the person asking has liked it. False for a visitor.
+    liked_by_me: bool = False
 
 
 class TagCount(NamedTuple):

@@ -146,6 +146,7 @@ class PostSummary(BaseModel):
     created_at: datetime
     updated_at: datetime = Field(description="When its text or tags last changed.")
     like_count: int
+    liked_by_me: bool = Field(description="Whether you have liked it. False without a login.")
     comment_count: int
     author: AuthorSummary | None = Field(description="Null if the account no longer exists.")
 

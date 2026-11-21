@@ -34,7 +34,7 @@ the post carries a count of its comments.
 | `content` | 1 to 5,000 characters with something visible in them; line breaks and tabs allowed, other control and invisible formatting characters refused |
 | `is_deleted` | True only for a placeholder: a deleted comment kept because it has replies |
 | `reply_count` | The number of replies |
-| `like_count` | Zero for now; nothing maintains it yet |
+| `like_count` | Kept by the likes feature; back to zero on a placeholder |
 | `created_at`, `updated_at` | `updated_at` moves when the comment is edited, and only then |
 
 One index, `thread`, on `(post_id, parent_id, created_at, _id)`. It serves
@@ -132,10 +132,12 @@ someone had posted and deleted in a loop, and nothing could clean them up.
 - **No rate limit yet**, so nothing stops someone filling a post with
   comments.
 
-## Not here yet
+## Likes
 
-`liked_by_me` and the like counts arrive with likes, which will also have to
-remove a comment's likes when the comment or its post is deleted.
+Likes build on comments, not the other way round. `CommentService` takes
+cleanup hooks, run in the transaction that deletes a comment, and a lookup
+for `liked_by_me`; `get_comment_service` registers the likes feature's. See
+[likes.md](likes.md).
 
 ## Tests
 

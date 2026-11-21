@@ -15,6 +15,7 @@ from app.core.security.middleware import OPENAPI_URL
 from app.core.settings import Settings, get_settings
 from app.core.settings.environment import API_PREFIX
 from app.core.settings.security import MAX_BODY_SIZE
+from app.likes.router import router as likes_router
 from app.posts.router import my_posts_router, posts_router, tags_router
 from app.rbac.router import permissions_router, roles_router
 from app.rbac.sync import sync_rbac
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(tags_router)
     api.include_router(post_comments_router)
     api.include_router(comments_router)
+    api.include_router(likes_router)
     app.include_router(api)
 
     return app

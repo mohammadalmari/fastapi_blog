@@ -55,5 +55,6 @@ class CommentPublic(BaseModel):
     )
     reply_count: int
     like_count: int
+    liked_by_me: bool = Field(description="Whether you have liked it. False without a login.")
     created_at: datetime
     updated_at: datetime = Field(description="Later than `created_at` if it was edited.")

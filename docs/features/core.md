@@ -15,6 +15,7 @@ feature.
 | `errors.py` | The errors services raise, and the handlers that turn them into responses |
 | `types.py` | `PyObjectId` |
 | `text.py` | Checks on text people will read: `has_hidden_characters`, `has_visible_characters` |
+| `caching.py` | `never_cache` and `varies_by_login`: keeping one person's response out of shared caches |
 | `pagination.py` | `PageParamsDep`, `Page[T]`, and the cursor helpers |
 | `logs.py` | `configure_logging(settings)` and the `app.security` logger name |
 | `health.py` | `GET /health` |
