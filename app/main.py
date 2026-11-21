@@ -14,6 +14,8 @@ from app.core.security.middleware import OPENAPI_URL
 from app.core.settings import Settings, get_settings
 from app.core.settings.environment import API_PREFIX
 from app.core.settings.security import MAX_BODY_SIZE
+from app.rbac.router import permissions_router, roles_router
+from app.rbac.sync import sync_rbac
 from app.users.router import router as users_router
 
 
@@ -39,6 +41,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # failing on the first request.
             await db.command("ping")
             await ensure_indexes(db)
+            # The permission catalog and the two system roles (see rbac.sync).
+            await sync_rbac(db)
             app.state.db = db
             # Computed now so that the first login for an unknown account isn't
             # slower than later ones.
@@ -68,6 +72,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(auth_router)
     api.include_router(users_router)
+    api.include_router(permissions_router)
+    api.include_router(roles_router)
     app.include_router(api)
 
     return app

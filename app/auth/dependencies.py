@@ -12,6 +12,7 @@ from app.core.logs import SECURITY_LOGGER
 from app.core.security import decode_access_token
 from app.core.settings import SettingsDep
 from app.core.settings.environment import API_PREFIX
+from app.rbac.providers import RoleRepositoryDep
 from app.users.dependencies import UserRepositoryDep
 from app.users.models import User
 
@@ -30,9 +31,10 @@ async def get_refresh_token_repository(db: DbDep) -> RefreshTokenRepository:
 async def get_auth_service(
     users: UserRepositoryDep,
     refresh_tokens: Annotated[RefreshTokenRepository, Depends(get_refresh_token_repository)],
+    roles: RoleRepositoryDep,
     settings: SettingsDep,
 ) -> AuthService:
-    return AuthService(users, refresh_tokens, settings)
+    return AuthService(users, refresh_tokens, roles, settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]

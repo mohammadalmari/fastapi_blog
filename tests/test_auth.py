@@ -20,6 +20,7 @@ from app.core.logs import SECURITY_LOGGER
 from app.core.security import dummy_hash, hash_refresh_token, verify_password
 from app.core.security.tokens import ALGORITHM
 from app.core.settings import Settings
+from app.rbac.models import Role
 from app.users.models import User
 from tests.helpers import (
     ACCESS_TOKEN_TTL_MINUTES,
@@ -41,7 +42,9 @@ pytestmark = pytest.mark.anyio
 # --- register ---------------------------------------------------------------
 
 
-async def test_register_creates_a_user(client: AsyncClient, db: Database) -> None:
+async def test_register_creates_a_user(
+    client: AsyncClient, db: Database, roles: dict[str, Role]
+) -> None:
     response = await register(client, email="Jane@Example.com", username="Jane")
 
     assert response.status_code == 201
@@ -55,7 +58,7 @@ async def test_register_creates_a_user(client: AsyncClient, db: Database) -> Non
     stored = await db.users.find_one({"email": "jane@example.com"})
     assert stored is not None
     assert str(stored["_id"]) == body["id"]
-    assert stored["role_ids"] == []
+    assert stored["role_ids"] == [roles["reader"].id]
     assert stored["password_hash"].startswith("$argon2id$")
     assert verify_password(PASSWORD, stored["password_hash"])[0]
 
@@ -286,6 +289,8 @@ async def test_me_returns_the_logged_in_user(
         "bio",
         "is_active",
         "created_at",
+        "roles",
+        "permissions",
     }
 
 

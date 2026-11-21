@@ -14,7 +14,7 @@ from app.core.settings.security import (
     REFRESH_COOKIE_SAMESITE,
 )
 from app.users.models import User
-from app.users.schemas import UserMe
+from app.users.schemas import UserAccount
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,7 +60,7 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
 @router.post(
     "/register",
     status_code=status.HTTP_201_CREATED,
-    response_model=UserMe,
+    response_model=UserAccount,
     responses=error_responses(status.HTTP_409_CONFLICT),
 )
 async def register(data: RegisterRequest, service: AuthServiceDep) -> User:

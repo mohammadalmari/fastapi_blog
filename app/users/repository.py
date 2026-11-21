@@ -1,12 +1,13 @@
 """Every MongoDB query on the ``users`` collection."""
 
+from collections.abc import Sequence
 from typing import Literal
 
 from bson import ObjectId
 from pymongo import IndexModel
 from pymongo.errors import DuplicateKeyError
 
-from app.core.database import Database, Document, register_indexes, utcnow
+from app.core.database import Database, Document, Session, register_indexes, utcnow
 from app.users.models import User
 from app.users.schemas import normalize_login_identifier
 
@@ -40,7 +41,14 @@ class UserRepository:
     def __init__(self, db: Database) -> None:
         self._users = db[COLLECTION]
 
-    async def create(self, *, email: str, username: str, password_hash: str) -> User:
+    async def create(
+        self,
+        *,
+        email: str,
+        username: str,
+        password_hash: str,
+        role_ids: Sequence[ObjectId] = (),
+    ) -> User:
         now = utcnow()
         doc: Document = {
             "email": email,
@@ -49,7 +57,7 @@ class UserRepository:
             "display_name": None,
             "bio": None,
             "avatar_key": None,
-            "role_ids": [],
+            "role_ids": list(role_ids),
             "is_active": True,
             "created_at": now,
             "updated_at": now,
@@ -63,8 +71,12 @@ class UserRepository:
             raise DuplicateUserError("username" if "username" in pattern else "email") from error
         return _to_user(doc)
 
-    async def get(self, user_id: ObjectId) -> User | None:
-        doc = await self._users.find_one({"_id": user_id})
+    async def get(self, user_id: ObjectId, *, session: Session | None = None) -> User | None:
+        doc = await self._users.find_one({"_id": user_id}, session=session)
+        return _to_user(doc) if doc else None
+
+    async def get_by_email(self, email: str) -> User | None:
+        doc = await self._users.find_one({"email": email})
         return _to_user(doc) if doc else None
 
     async def get_by_login(self, identifier: str) -> User | None:
@@ -77,4 +89,34 @@ class UserRepository:
         await self._users.update_one(
             {"_id": user_id},
             {"$set": {"password_hash": password_hash, "updated_at": utcnow()}},
+        )
+
+    async def set_roles(
+        self, user_id: ObjectId, role_ids: Sequence[ObjectId], *, session: Session | None = None
+    ) -> User | None:
+        doc = await self._users.find_one_and_update(
+            {"_id": user_id},
+            {"$set": {"role_ids": list(role_ids), "updated_at": utcnow()}},
+            return_document=True,
+            session=session,
+        )
+        return _to_user(doc) if doc else None
+
+    async def add_role(self, user_id: ObjectId, role_id: ObjectId) -> None:
+        await self._users.update_one(
+            {"_id": user_id},
+            {"$addToSet": {"role_ids": role_id}, "$set": {"updated_at": utcnow()}},
+        )
+
+    async def remove_role(self, role_id: ObjectId, *, session: Session | None = None) -> None:
+        """Take a role away from everyone who has it."""
+        await self._users.update_many(
+            {"role_ids": role_id}, {"$pull": {"role_ids": role_id}}, session=session
+        )
+
+    async def count_active_with_role(
+        self, role_id: ObjectId, *, excluding: ObjectId, session: Session | None = None
+    ) -> int:
+        return await self._users.count_documents(
+            {"role_ids": role_id, "is_active": True, "_id": {"$ne": excluding}}, session=session
         )

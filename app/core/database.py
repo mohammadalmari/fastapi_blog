@@ -3,11 +3,13 @@ MongoDB access through PyMongo's native async client. There is no ODM:
 repositories work with plain documents and map them to Pydantic models by hand.
 """
 
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from pymongo import AsyncMongoClient, IndexModel
+from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.settings import Settings
@@ -15,6 +17,7 @@ from app.core.settings import Settings
 type Document = dict[str, Any]
 type Client = AsyncMongoClient[Document]
 type Database = AsyncDatabase[Document]
+type Session = AsyncClientSession
 
 # How long to look for a reachable server before giving up. The driver's
 # default is 30 seconds, which makes "Mongo isn't running" slow to notice.
@@ -50,6 +53,19 @@ def utcnow() -> datetime:
     """
     now = datetime.now(UTC)
     return now.replace(microsecond=now.microsecond // 1000 * 1000)
+
+
+async def in_transaction[T](db: Database, work: Callable[[Session], Coroutine[Any, Any, T]]) -> T:
+    """
+    Run ``work`` in a transaction: all of its writes happen, or none do.
+
+    ``work`` gets a session and must pass it to every query that belongs to
+    the transaction. It may run more than once: when two transactions touch
+    the same document, MongoDB aborts one of them and the driver retries it,
+    so ``work`` must not have side effects outside the database.
+    """
+    async with db.client.start_session() as session:
+        return await session.with_transaction(work)
 
 
 def create_client(settings: Settings) -> Client:

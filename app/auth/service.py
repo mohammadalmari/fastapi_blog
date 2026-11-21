@@ -22,6 +22,7 @@ from app.core.security import (
 )
 from app.core.settings import Settings
 from app.core.settings.security import PASSWORD_MAX_LENGTH
+from app.rbac.repository import RoleRepository
 from app.users.models import User
 from app.users.repository import DuplicateUserError, UserRepository
 
@@ -42,10 +43,12 @@ class AuthService:
         self,
         users: UserRepository,
         refresh_tokens: RefreshTokenRepository,
+        roles: RoleRepository,
         settings: Settings,
     ) -> None:
         self._users = users
         self._refresh_tokens = refresh_tokens
+        self._roles = roles
         self._settings = settings
 
     async def register(self, data: RegisterRequest) -> User:
@@ -56,9 +59,18 @@ class AuthService:
             raise FieldError("password", problems)
 
         password_hash = await hash_password_async(data.password)
+        default_role = await self._roles.get_default()
+        if default_role is None:
+            # Startup guarantees one and the API only ever moves it, so this
+            # means the database was changed by hand. The account is still
+            # created, with no role; say so where an operator will see it.
+            security_log.warning("No default role exists: new accounts get no role")
         try:
             return await self._users.create(
-                email=data.email, username=data.username, password_hash=password_hash
+                email=data.email,
+                username=data.username,
+                password_hash=password_hash,
+                role_ids=[default_role.id] if default_role else [],
             )
         except DuplicateUserError as error:
             # This does tell a stranger that an email has an account. Closing

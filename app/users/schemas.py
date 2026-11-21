@@ -8,6 +8,7 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     BeforeValidator,
+    ConfigDict,
     EmailStr,
     Field,
     StringConstraints,
@@ -64,7 +65,12 @@ Username = Annotated[
 ]
 
 
-class UserMe(BaseModel):
+class RoleSummary(BaseModel):
+    id: PyObjectId
+    name: str
+
+
+class UserAccount(BaseModel):
     """A user's own account. Notably without ``password_hash``."""
 
     id: PyObjectId
@@ -74,3 +80,30 @@ class UserMe(BaseModel):
     bio: str | None
     is_active: bool
     created_at: datetime
+
+
+class UserMe(UserAccount):
+    """The account, plus what it is allowed to do."""
+
+    roles: list[RoleSummary]
+    # What the roles add up to, so a client can decide which buttons to show.
+    # The server still checks every action itself.
+    permissions: list[str]
+
+
+class UserAdmin(BaseModel):
+    """A user as an administrator sees them."""
+
+    id: PyObjectId
+    email: str
+    username: str
+    display_name: str | None
+    is_active: bool
+    created_at: datetime
+    roles: list[RoleSummary]
+
+
+class AssignRolesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_ids: list[PyObjectId] = Field(max_length=50, description="The user's complete new set.")

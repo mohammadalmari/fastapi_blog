@@ -37,6 +37,12 @@ class ForbiddenError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
 
 
+class NotFoundError(AppError):
+    """The thing asked for doesn't exist (or the caller may not know it does)."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+
+
 class ConflictError(AppError):
     """The request clashes with what already exists, e.g. a taken username."""
 

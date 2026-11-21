@@ -77,6 +77,53 @@ in an HttpOnly cookie that only the `/auth` routes receive. Each refresh
 replaces the refresh token; presenting an already-used one ends that session.
 Logging out ends the whole session, and errors come back as `{"detail": ...}`.
 
+## Roles and permissions
+
+What a user may do is decided by their roles. A permission is a fixed name in
+the code, such as `posts:update:own`; a role is a set of permissions that
+administrators create and edit while the app runs; a user can hold several
+roles and may do whatever any of them allows.
+
+| Route | Needs | What it does |
+|---|---|---|
+| `GET /permissions` | `roles:read` | Every permission that exists |
+| `GET /roles`, `GET /roles/{id}` | `roles:read` | List or read roles |
+| `POST /roles` | `roles:create` | Create a role |
+| `PATCH /roles/{id}` | `roles:update` | Edit a role; `is_default: true` makes it the role new accounts get |
+| `DELETE /roles/{id}` | `roles:delete` | Delete a role and take it from its holders |
+| `PUT /users/{id}/roles` | `users:assign_roles` | Replace a user's roles |
+
+`GET /users/me` lists the caller's roles and the permissions they add up to.
+Changes take effect on the user's next request.
+
+Two roles are built in and can't be deleted or renamed: `admin`, which always
+holds every permission, and `reader`, which new accounts get. The app creates
+them at startup. The last active admin can't be demoted, and `admin` can't be
+made the default role.
+
+Nobody can grant what they don't hold: you may only put permissions you have
+into a role, and only give or take away roles whose permissions you have. That
+is what makes `roles:update` and `users:assign_roles` safe to hand to someone
+who is not a full administrator.
+
+To create the first administrator, and the optional `author`, `moderator` and
+`editor` roles:
+
+```bash
+uv run python -m app.scripts.seed --email you@example.com --username you
+```
+
+It asks for a password. In Docker, put `docker compose exec api` in front and
+drop `uv run`. It never overwrites a role or a password.
+
+If the email already has an account, the command refuses: sign-up is open, so
+that account may not be yours. To give an existing account the admin role, say
+so explicitly (no password is asked, and the account's own is kept):
+
+```bash
+uv run python -m app.scripts.seed --email you@example.com --promote
+```
+
 ## Configuration
 
 Settings are read from environment variables, falling back to `.env`; see

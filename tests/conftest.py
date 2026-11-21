@@ -19,9 +19,9 @@ module.
 
 import os
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -45,9 +45,12 @@ from app.core.security import create_access_token, hash_password, passwords  # n
 from app.core.settings import Settings  # noqa: E402
 from app.core.settings.environment import ROOT_DIR  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.rbac.models import Role  # noqa: E402
+from app.rbac.repository import PERMISSIONS, RoleRepository  # noqa: E402
+from app.rbac.sync import ensure_system_roles  # noqa: E402
 from app.users.models import User  # noqa: E402
 from app.users.repository import UserRepository  # noqa: E402
-from tests.helpers import ACCESS_TOKEN_TTL_MINUTES, PASSWORD, REFRESH_TOKEN_TTL_DAYS  # noqa: E402
+from tests.helpers import ACCESS_TOKEN_TTL_MINUTES, PASSWORD, REFRESH_TOKEN_TTL_DAYS, bearer  # noqa: E402
 
 # asgi-lifespan gives startup 5 seconds by default, which a busy database
 # server can exceed; a slow start should be slow, not an error.
@@ -215,10 +218,15 @@ async def app(_module_app: FastAPI) -> AsyncGenerator[FastAPI]:
     _module_app.dependency_overrides.clear()
     db: Database = _module_app.state.db
     for name in await db.list_collection_names():
+        if name == PERMISSIONS:
+            continue  # the catalog is the same for every test; startup stored it
         if name in registered_collections():
             await db[name].delete_many({})  # keeps the collection's indexes
         else:
             await db.drop_collection(name)
+    # Emptying `roles` undid part of startup's work; redo it, so every test
+    # starts with the two system roles in place.
+    await ensure_system_roles(db)
 
 
 @pytest.fixture
@@ -233,21 +241,102 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
-# --- users ------------------------------------------------------------------
+# --- roles and users --------------------------------------------------------
+
+
+class MakeRole(Protocol):
+    def __call__(
+        self, name: str, *permissions: str, is_default: bool = False
+    ) -> Awaitable[Role]: ...
+
+
+class MakeUser(Protocol):
+    def __call__(
+        self, username: str, *role_names: str, is_active: bool = True
+    ) -> Awaitable[User]: ...
+
+
+type HeadersFor = Callable[[User], dict[str, str]]
 
 
 @pytest.fixture
-async def user(db: Database) -> User:
+async def roles(db: Database) -> dict[str, Role]:
+    """The roles that exist when the test starts, by name: admin and reader."""
+    return {role.name: role for role in await RoleRepository(db).list_all()}
+
+
+@pytest.fixture
+def make_role(db: Database) -> MakeRole:
+    """``await make_role("author", Perm.POSTS_CREATE)`` creates an ordinary role."""
+
+    async def make(name: str, *permissions: str, is_default: bool = False) -> Role:
+        role = await RoleRepository(db).create(name=name, description="", permissions=permissions)
+        if is_default:
+            await db.roles.update_many({"is_default": True}, {"$set": {"is_default": False}})
+            await db.roles.update_one({"_id": role.id}, {"$set": {"is_default": True}})
+            role = role.model_copy(update={"is_default": True})
+        return role
+
+    return make
+
+
+@pytest.fixture
+def make_user(db: Database) -> MakeUser:
+    """``await make_user("jane", "reader")`` puts a user straight into the database."""
+
+    async def make(username: str, *role_names: str, is_active: bool = True) -> User:
+        role_ids = []
+        for name in role_names:
+            role = await RoleRepository(db).get_by_name(name)
+            # A typo here would quietly make a user with no roles, and a
+            # "403" test would then pass for the wrong reason.
+            assert role is not None, f"no role named {name!r}"
+            role_ids.append(role.id)
+        user = await UserRepository(db).create(
+            email=f"{username}@example.com",
+            username=username,
+            password_hash=hash_password(PASSWORD),
+            role_ids=role_ids,
+        )
+        if not is_active:
+            await db.users.update_one({"_id": user.id}, {"$set": {"is_active": False}})
+            user = user.model_copy(update={"is_active": False})
+        return user
+
+    return make
+
+
+@pytest.fixture
+async def user(make_user: MakeUser) -> User:
     """
-    A user who exists, put straight into the database. For tests that need a
-    user but aren't about signing up; ``PASSWORD`` logs them in.
+    An ordinary user, as sign-up would leave them: the reader role. For tests
+    that need a user but aren't about signing up; ``PASSWORD`` logs them in.
     """
-    return await UserRepository(db).create(
-        email="jane@example.com", username="jane", password_hash=hash_password(PASSWORD)
-    )
+    return await make_user("jane", "reader")
+
+
+@pytest.fixture
+async def admin(make_user: MakeUser) -> User:
+    return await make_user("root", "admin")
 
 
 @pytest.fixture
 def access_token(user: User, settings: Settings) -> str:
     """A valid access token for ``user``, without going through login."""
     return create_access_token(user.id, settings)
+
+
+@pytest.fixture
+def headers_for(settings: Settings) -> HeadersFor:
+    """``headers_for(someone)`` is the Authorization header that logs them in."""
+    return lambda who: bearer(create_access_token(who.id, settings))
+
+
+@pytest.fixture
+def user_headers(user: User, headers_for: HeadersFor) -> dict[str, str]:
+    return headers_for(user)
+
+
+@pytest.fixture
+def admin_headers(admin: User, headers_for: HeadersFor) -> dict[str, str]:
+    return headers_for(admin)
