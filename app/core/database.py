@@ -36,6 +36,11 @@ def register_indexes(collection: str, indexes: list[IndexModel]) -> None:
     _indexes[collection] = indexes
 
 
+def registered_collections() -> frozenset[str]:
+    """The collections that have registered indexes."""
+    return frozenset(_indexes)
+
+
 def utcnow() -> datetime:
     """
     The current time as MongoDB will store it: UTC, to the millisecond.

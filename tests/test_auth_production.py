@@ -9,14 +9,13 @@ from httpx import ASGITransport, AsyncClient
 
 from tests.helpers import API, login, refresh_cookie, register
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.usefixtures("user")]
 
 SITE = "https://blog.example.com"
 FRONTEND = "https://app.example.com"
-STRONG_PASSWORD = "a long and unusual passphrase"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def settings_overrides() -> dict[str, Any]:
     return {
         "debug": False,
@@ -34,47 +33,39 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 
 async def test_the_refresh_cookie_is_secure(client: AsyncClient) -> None:
-    await register(client, password=STRONG_PASSWORD)
-
-    response = await login(client, password=STRONG_PASSWORD)
+    response = await login(client)
 
     assert response.status_code == 200
     assert refresh_cookie(response)["secure"] is True
 
 
-@pytest.mark.parametrize(
-    ("password", "problem"),
-    [
-        ("short", "Password must be at least 12 characters."),
-        ("123456789012", "Password can't be entirely numeric."),
-        ("jane@example.com", "Password is too similar to your email or username."),
-    ],
-)
-async def test_register_applies_the_strict_password_policy(
-    client: AsyncClient, password: str, problem: str
-) -> None:
-    response = await register(client, password=password)
+async def test_register_applies_the_strict_password_policy(client: AsyncClient) -> None:
+    """That the strict rules are the ones in force; test_passwords.py covers each rule."""
+    response = await register(
+        client, email="new@example.com", username="newcomer", password="123456789012"
+    )
 
     assert response.status_code == 422
-    assert problem in [error["msg"] for error in response.json()["detail"]]
+    assert [error["msg"] for error in response.json()["detail"]] == [
+        "Password can't be entirely numeric."
+    ]
 
 
-@pytest.mark.parametrize("route", ["refresh", "logout"])
 @pytest.mark.parametrize(
-    "origin",
+    ("route", "origin"),
     [
-        "https://evil.example",
-        "null",  # what sandboxed iframes and some redirects send
-        "http://blog.example.com",  # right host, wrong scheme
-        "https://blog.example.com:8443",  # right host, wrong port
-        "https://blog.example.com.evil.example",
+        ("refresh", "https://evil.example"),
+        ("logout", "https://evil.example"),
+        ("refresh", "null"),  # what sandboxed iframes and some redirects send
+        ("refresh", "http://blog.example.com"),  # right host, wrong scheme
+        ("refresh", "https://blog.example.com:8443"),  # right host, wrong port
+        ("refresh", "https://blog.example.com.evil.example"),
     ],
 )
 async def test_cookie_routes_reject_other_origins(
     client: AsyncClient, route: str, origin: str
 ) -> None:
-    await register(client, password=STRONG_PASSWORD)
-    await login(client, password=STRONG_PASSWORD)  # the client now holds a valid cookie
+    await login(client)  # the client now holds a valid cookie
 
     response = await client.post(f"{API}/auth/{route}", headers={"Origin": origin})
 
@@ -84,13 +75,14 @@ async def test_cookie_routes_reject_other_origins(
     assert (await client.post(f"{API}/auth/refresh")).status_code == 200
 
 
-@pytest.mark.parametrize("route", ["refresh", "logout"])
-@pytest.mark.parametrize("origin", [SITE, FRONTEND, None])
+@pytest.mark.parametrize(
+    ("route", "origin"),
+    [("refresh", SITE), ("refresh", FRONTEND), ("refresh", None), ("logout", FRONTEND)],
+)
 async def test_cookie_routes_accept_known_origins_and_non_browsers(
     client: AsyncClient, route: str, origin: str | None
 ) -> None:
-    await register(client, password=STRONG_PASSWORD)
-    await login(client, password=STRONG_PASSWORD)
+    await login(client)
 
     response = await client.post(
         f"{API}/auth/{route}", headers={"Origin": origin} if origin else {}

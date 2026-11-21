@@ -118,6 +118,20 @@ uv run ty check            # type check
 uv run pytest              # tests
 ```
 
+More ways to run the tests:
+
+```bash
+uv run pytest -n auto                                  # in parallel, one database per worker
+uv run pytest --cov=app --cov-report=term-missing      # show the lines no test reaches
+uv run pytest --durations=10                           # the ten slowest tests
+uv run pytest -p no:randomly                           # in file order
+```
+
+Tests run in a random order each time, to catch tests that depend on one
+another; the seed is printed at the top, and `-p randomly --randomly-seed=<n>`
+repeats an order. The whole suite takes about two seconds; the budget is two
+minutes.
+
 The tests need a reachable MongoDB replica set. They connect to
 `TEST_DATABASE_URL` if it is set, otherwise to `DATABASE_URL`, otherwise to
 the Compose database on `localhost:27017`; both variables can be in `.env` or

@@ -36,14 +36,6 @@ async def login(
     )
 
 
-async def register_and_login(client: AsyncClient) -> str:
-    """Create the default user, log in, and return the access token."""
-    assert (await register(client)).status_code == 201
-    response = await login(client)
-    assert response.status_code == 200
-    return str(response.json()["access_token"])
-
-
 def bearer(access_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {access_token}"}
 

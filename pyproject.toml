@@ -20,6 +20,9 @@ dependencies = [
 dev = [
     "asgi-lifespan>=2.1.0",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "pytest-randomly>=5.1.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.6",
     "ty>=0.0.107",
 ]

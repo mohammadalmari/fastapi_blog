@@ -2,11 +2,16 @@
 Shared fixtures.
 
 Tests run against a real MongoDB, in a database with a random name that exists
-only for this run. Every test gets a freshly built app and the database is
-dropped after each one, so tests can't see each other's data.
+only for this run (one per worker when run in parallel). Its collections are
+emptied after every test, so tests can't see each other's data, and the
+database is dropped at the end.
 
 Which server: ``TEST_DATABASE_URL`` if set, else ``DATABASE_URL``, else the
 app's default. Both are read from the environment or ``.env``.
+
+Building an app and its indexes costs about 100 ms, so tests share one app. A
+module that needs a different one (production mode, say) overrides the
+module-scoped ``settings_overrides`` fixture and gets its own.
 
 Async tests opt in with ``pytestmark = pytest.mark.anyio`` at the top of the
 module.
@@ -14,7 +19,7 @@ module.
 
 import os
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
 
@@ -22,19 +27,37 @@ import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Importing app.main builds the module-level app from the real environment,
-# which refuses to start in production mode without a secret key. The tests
-# never use that app; this only lets the import succeed on a bare machine.
-os.environ.setdefault("FASTAPI_DEBUG", "true")
+# The tests pin every setting they depend on, so nothing may leak in from the
+# shell: drop all FASTAPI_* variables for this process. Then turn debug on,
+# because importing app.main builds the module-level app from the environment
+# (the tests never use that app), and outside debug it needs a secret key.
+for _name in [name for name in os.environ if name.startswith("FASTAPI_")]:
+    del os.environ[_name]
+os.environ["FASTAPI_DEBUG"] = "true"
 
-from app.core.database import Database
-from app.core.settings import Settings
-from app.core.settings.environment import ROOT_DIR
-from app.main import create_app
-from tests.helpers import ACCESS_TOKEN_TTL_MINUTES, REFRESH_TOKEN_TTL_DAYS
+from app.core.database import Database, create_client, registered_collections  # noqa: E402
+from app.core.security import create_access_token, hash_password, passwords  # noqa: E402
+from app.core.settings import Settings  # noqa: E402
+from app.core.settings.environment import ROOT_DIR  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.users.models import User  # noqa: E402
+from app.users.repository import UserRepository  # noqa: E402
+from tests.helpers import ACCESS_TOKEN_TTL_MINUTES, PASSWORD, REFRESH_TOKEN_TTL_DAYS  # noqa: E402
+
+# asgi-lifespan gives startup 5 seconds by default, which a busy database
+# server can exceed; a slow start should be slow, not an error.
+STARTUP_TIMEOUT = 30
+
+# The hasher the app really uses, captured before any test replaces it.
+PRODUCTION_HASHER = passwords._password_hash
+
+# Argon2 at its weakest: a real hash, but in microseconds instead of 30 ms.
+FAST_HASHER = PasswordHash((Argon2Hasher(time_cost=1, memory_cost=8, parallelism=1),))
 
 
 class DatabaseUrls(BaseSettings):
@@ -53,6 +76,34 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+# --- password hashing -------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def fast_password_hashing() -> Generator[None]:
+    """
+    Hash passwords with cheap parameters in tests. Only the parameters change:
+    the app's code path is the same. ``real_password_hashing`` opts out.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(passwords, "_password_hash", FAST_HASHER)
+        passwords.dummy_hash.cache_clear()
+        yield
+    passwords.dummy_hash.cache_clear()
+
+
+@pytest.fixture
+def real_password_hashing(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    """For the few tests that are about the production hasher itself."""
+    monkeypatch.setattr(passwords, "_password_hash", PRODUCTION_HASHER)
+    passwords.dummy_hash.cache_clear()
+    yield
+    passwords.dummy_hash.cache_clear()
+
+
+# --- settings ---------------------------------------------------------------
+
+
 @pytest.fixture(scope="session")
 def database_name() -> str:
     return f"test_{uuid.uuid4().hex}"
@@ -64,18 +115,11 @@ def database_url() -> SecretStr | None:
     return urls.test_database_url or urls.database_url
 
 
-@pytest.fixture
-def settings_overrides() -> dict[str, Any]:
-    """Override in a test module to build the app with other settings."""
-    return {}
-
-
-@pytest.fixture
-def settings(
+def _build_settings(
     database_name: str,
     database_url: SecretStr | None,
-    settings_overrides: dict[str, Any],
-    tmp_path: Path,
+    log_dir: Path,
+    overrides: dict[str, Any],
 ) -> Settings:
     values: dict[str, Any] = {
         "debug": True,
@@ -86,25 +130,95 @@ def settings(
         "cors_allowed_origins": [],
         "cors_allow_credentials": False,
         # Production-mode apps write log files; keep them out of the project.
-        "log_dir": tmp_path / "logs",
-        **settings_overrides,
+        "log_dir": log_dir,
+        **overrides,
     }
-    # `_env_file=None`: apart from the database URL above, ignore the
-    # developer's .env so runs are repeatable.
+    # `_env_file=None`: apart from the database URL, ignore the developer's
+    # .env so runs are repeatable.
     settings = Settings(_env_file=None, DATABASE_NAME=database_name, **values)
     if database_url is not None:
         settings = settings.model_copy(update={"database_url": database_url})
     return settings
 
 
-@pytest.fixture
-async def app(settings: Settings) -> AsyncGenerator[FastAPI]:
-    app = create_app(settings)
+@pytest.fixture(scope="session")
+def default_settings(
+    database_name: str, database_url: SecretStr | None, tmp_path_factory: pytest.TempPathFactory
+) -> Settings:
+    return _build_settings(database_name, database_url, tmp_path_factory.mktemp("logs"), {})
+
+
+@pytest.fixture(scope="module")
+def settings_overrides() -> dict[str, Any]:
+    """Override in a test module (keep it module-scoped) for other settings."""
+    return {}
+
+
+@pytest.fixture(scope="module")
+def settings(
+    default_settings: Settings,
+    database_name: str,
+    database_url: SecretStr | None,
+    settings_overrides: dict[str, Any],
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Settings:
+    if not settings_overrides:
+        return default_settings
+    log_dir = tmp_path_factory.mktemp("logs")
+    return _build_settings(database_name, database_url, log_dir, settings_overrides)
+
+
+# --- app and database -------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+async def _drop_database_afterwards(default_settings: Settings) -> AsyncGenerator[None]:
+    yield
+    client = create_client(default_settings)
+    # Once per run, not per test: besides costing 100 ms, on a replica set a
+    # drop occasionally stalls for about five seconds (measured: roughly 1 in
+    # 100, also when dropping the collections one by one). At the end of a run
+    # that is a rare short wait; after every test it would be a slow suite.
+    await client.drop_database(default_settings.database_name)
+    await client.close()
+
+
+@pytest.fixture(scope="session")
+async def _default_app(
+    default_settings: Settings, _drop_database_afterwards: None
+) -> AsyncGenerator[FastAPI]:
+    """The one app most tests share."""
+    app = create_app(default_settings)
     # httpx doesn't run startup/shutdown; LifespanManager does.
-    async with LifespanManager(app):
+    async with LifespanManager(app, startup_timeout=STARTUP_TIMEOUT):
         yield app
-        db: Database = app.state.db
-        await db.client.drop_database(db.name)
+
+
+@pytest.fixture(scope="module")
+async def _module_app(
+    settings: Settings, default_settings: Settings, _default_app: FastAPI
+) -> AsyncGenerator[FastAPI]:
+    if settings is default_settings:
+        yield _default_app
+        return
+    # This module overrides the settings, so it gets an app of its own. It
+    # uses the same database, which the shared app has already prepared.
+    app = create_app(settings)
+    async with LifespanManager(app, startup_timeout=STARTUP_TIMEOUT):
+        yield app
+
+
+@pytest.fixture
+async def app(_module_app: FastAPI) -> AsyncGenerator[FastAPI]:
+    yield _module_app
+    # Undo what a test may have left behind in the shared app and database.
+    _module_app.dependency_overrides.clear()
+    db: Database = _module_app.state.db
+    for name in await db.list_collection_names():
+        if name in registered_collections():
+            await db[name].delete_many({})  # keeps the collection's indexes
+        else:
+            await db.drop_collection(name)
 
 
 @pytest.fixture
@@ -117,3 +231,23 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://localhost") as client:
         yield client
+
+
+# --- users ------------------------------------------------------------------
+
+
+@pytest.fixture
+async def user(db: Database) -> User:
+    """
+    A user who exists, put straight into the database. For tests that need a
+    user but aren't about signing up; ``PASSWORD`` logs them in.
+    """
+    return await UserRepository(db).create(
+        email="jane@example.com", username="jane", password_hash=hash_password(PASSWORD)
+    )
+
+
+@pytest.fixture
+def access_token(user: User, settings: Settings) -> str:
+    """A valid access token for ``user``, without going through login."""
+    return create_access_token(user.id, settings)

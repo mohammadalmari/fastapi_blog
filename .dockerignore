@@ -30,3 +30,8 @@ Dockerfile
 docker-compose.yml
 README.md
 tests/
+
+# Test coverage data
+.coverage
+.coverage.*
+htmlcov/
