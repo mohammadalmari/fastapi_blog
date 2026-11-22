@@ -1,6 +1,6 @@
 # Documentation
 
-How the FastAPI Blog works and why it is built the way it is. The
+How Draftwork Blog works and why it is built the way it is. The
 [README](../README.md) covers installing and running it.
 
 | Section | What is in it |

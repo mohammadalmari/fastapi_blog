@@ -100,7 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await client.close()
 
     app = FastAPI(
-        title="FastAPI Blog",
+        title="Draftwork Blog",
         summary="A multi-user blog API with roles and permissions an administrator manages.",
         description=API_DESCRIPTION,
         version=API_VERSION,

@@ -1,4 +1,4 @@
-# FastAPI Blog
+# Draftwork Blog
 
 A multi-user blog API built with FastAPI, with authentication and
 authorization through roles and permissions that administrators manage while
