@@ -128,3 +128,19 @@ otherwise `DATABASE_URL`, otherwise the Compose database. They use a database
 with a random name and drop it afterwards, so they never touch your
 development data. [Testing](docs/concepts/testing.md) covers the rest,
 including running in parallel and measuring coverage.
+
+To have the first three run by themselves before each commit, install the
+git hook once per checkout:
+
+```bash
+uv run pre-commit install
+```
+
+The formatter rewrites what needs it and stops the commit so you can look and
+stage the result; the linter and type checker only report. The tests are not
+in the hook: they take longer and need MongoDB.
+
+The same four checks run on GitHub for every push to `main` and every pull
+request ([.github/workflows/ci.yml](.github/workflows/ci.yml)), against a
+MongoDB replica set started for the run. With `--check` on the formatter and
+`--locked` on the install, so unformatted code or a stale `uv.lock` fails.

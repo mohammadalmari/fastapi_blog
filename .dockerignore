@@ -25,6 +25,8 @@ media/
 *.log
 
 # Not needed to build
+.github/
+.pre-commit-config.yaml
 Dockerfile
 .dockerignore
 docker-compose.yml

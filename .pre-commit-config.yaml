@@ -1,0 +1,40 @@
+# Checks run by git before each commit. Install once per checkout:
+#
+#   uv run pre-commit install
+#
+# Only the fast ones are here, so that committing stays quick. The tests take
+# longer and need MongoDB; CI runs them (.github/workflows/ci.yml).
+#
+# Every hook is `repo: local` and calls the tool through uv. The usual setup
+# downloads each tool from its own repository at a version pinned in this
+# file, a second pin beside uv.lock, and the two drift apart until the hook
+# formats differently from CI. This way there is one version: the locked one.
+# `--locked` makes a hook fail, rather than quietly rewrite uv.lock, when the
+# lock is out of date.
+repos:
+  - repo: local
+    hooks:
+      # Rewrites the files. The commit then stops, because what was staged is
+      # no longer what is on disk: look at the change, stage it, commit again.
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --locked ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      # Reports, and changes nothing: a lint fix can alter what code does, so
+      # it is yours to make. `uv run ruff check --fix` applies the safe ones.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --locked ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      # The whole project, not only the files in the commit: a change in one
+      # file can break the types in another.
+      - id: ty
+        name: ty check
+        entry: uv run --locked ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false

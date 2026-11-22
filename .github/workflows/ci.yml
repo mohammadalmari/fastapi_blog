@@ -1,0 +1,81 @@
+# The four checks that must pass before a commit (see README, "Development"),
+# run on GitHub for every push to main and every pull request, so that the
+# rule doesn't depend on anyone remembering it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless: stop it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The job only reads the code. It needs no other access to the repository.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      # Where the tests find MongoDB (see tests/conftest.py). They create and
+      # drop a database of their own, with a random name.
+      TEST_DATABASE_URL: mongodb://localhost:27017/?replicaSet=rs0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Started by hand rather than as a `services:` container, because the
+      # app needs transactions, which need a replica set, which needs the
+      # server started with `--replSet`; a service container can't be given
+      # arguments. This is the same single-node set docker-compose.yml runs.
+      - name: Start MongoDB as a single-node replica set
+        run: |
+          docker run --detach --name mongo --publish 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
+          # The server takes a moment to accept connections.
+          for attempt in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' && break
+            sleep 1
+          done
+          # The member is named localhost:27017 because that is the address
+          # the tests, which run on the runner itself, connect to.
+          docker exec mongo mongosh --quiet --eval \
+            'rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]})'
+          # A new set needs a second or two to elect its only member primary.
+          for attempt in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && exit 0
+            sleep 1
+          done
+          echo "MongoDB did not become primary" >&2
+          docker logs mongo | tail -n 50 >&2
+          exit 1
+
+      # The same uv version as the Dockerfile. It installs Python itself, the
+      # version named in .python-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.3"
+          enable-cache: true
+
+      # --locked fails if uv.lock doesn't match pyproject.toml, so a
+      # dependency changed without updating the lock is caught here.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run ty check
+
+      - name: Tests
+        run: uv run pytest
