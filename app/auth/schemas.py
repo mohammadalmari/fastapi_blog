@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.settings.security import PASSWORD_MAX_LENGTH
 from app.users.schemas import Email, Username
@@ -14,6 +14,14 @@ class RegisterRequest(BaseModel):
     # Only the upper bound here; the rest of the password policy depends on
     # the settings and is checked in the service.
     password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    # As at sign-up: the rest of the policy is checked in the service.
+    new_password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class TokenResponse(BaseModel):

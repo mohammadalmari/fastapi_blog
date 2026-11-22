@@ -51,6 +51,12 @@ class ConflictError(AppError):
     status_code = status.HTTP_409_CONFLICT
 
 
+class PayloadTooLargeError(AppError):
+    """What was sent is bigger than this route accepts."""
+
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
+
+
 class FieldError(AppError):
     """
     A request field failed a check that Pydantic couldn't make, because it

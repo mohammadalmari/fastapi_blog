@@ -38,6 +38,30 @@ PASSWORD_HASH_CONCURRENCY = 4
 MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MiB
 
 # ---------------------------------------------------------------------------
+# Avatars
+# ---------------------------------------------------------------------------
+
+AVATAR_MAX_BYTES = 2 * 1024 * 1024  # 2 MiB, the uploaded file
+# The avatar route's own body limit: the file, plus room for the multipart
+# wrapping around it.
+AVATAR_MAX_BODY_SIZE = AVATAR_MAX_BYTES + 64 * 1024
+# Width times height. A small file can declare an enormous picture, so this
+# is refused before anything is decoded. What it bounds is memory: decoding
+# takes four bytes a pixel, and a few times that while the picture is
+# converted and resized.
+#
+# A JPEG is decoded at a fraction of its size (see `make_avatar`), so it may
+# be large: 4096 x 4096 covers a 12-megapixel photo and costs about 50 MiB.
+AVATAR_MAX_PIXELS = 4096 * 4096
+# PNG and WebP are decoded whole. At the limit above, a flat colour of under
+# a kilobyte needed about 460 MiB. At this one, a quarter of the pixels,
+# about 70 MiB.
+AVATAR_MAX_PIXELS_FULL_DECODE = 2048 * 2048
+AVATAR_SIZE = 256  # pixels, each side of the stored square
+# How many uploads are decoded at the same moment; the rest wait their turn.
+AVATAR_PROCESSING_CONCURRENCY = 2
+
+# ---------------------------------------------------------------------------
 # Headers (safe in every environment)
 # ---------------------------------------------------------------------------
 

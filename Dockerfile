@@ -61,8 +61,10 @@ COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 COPY --chown=fastapi:fastapi pyproject.toml ./
 COPY --chown=fastapi:fastapi app ./app
 
-# In production the app writes rotating log files to ./logs.
-RUN mkdir -p logs && chown fastapi:fastapi logs
+# In production the app writes rotating log files to ./logs and uploaded
+# avatars to ./media. Mount a volume over media, or they are lost with the
+# container.
+RUN mkdir -p logs media && chown fastapi:fastapi logs media
 
 USER fastapi
 

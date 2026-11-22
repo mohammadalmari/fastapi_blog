@@ -92,8 +92,22 @@ cannot be used to burn CPU.
 
 ### Request size
 
-A request body may be at most 1 MiB; beyond that FastAPI answers 413. A route
-that accepts uploads raises the limit for itself.
+A request body may be at most 1 MiB; beyond that FastAPI answers 413, in
+plain text and before the route runs. A route that accepts uploads raises the
+limit for itself.
+
+### Uploads
+
+The one upload is the avatar; [features/users.md](../features/users.md) has
+the detail. The rules any later upload should follow:
+
+- Never store what was sent. Decode it and write it again, so that nothing
+  hidden in the file, and none of its metadata, survives.
+- Limit three things: the request while it arrives, the file, and what the
+  file unpacks into. The last is checked before unpacking.
+- The app names the file. Nothing a client sent goes into a path.
+- The route that serves files accepts only names of the shape the app makes,
+  and every response carries `X-Content-Type-Options: nosniff`.
 
 ### Errors don't echo input
 

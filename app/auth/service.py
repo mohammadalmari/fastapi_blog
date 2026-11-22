@@ -98,11 +98,27 @@ class AuthService:
             # the account exists or is deactivated.
             raise UnauthorizedError("Incorrect email, username or password")
 
-        if upgraded_hash:
-            await self._users.set_password_hash(user.id, upgraded_hash)
+        current_hash = user.password_hash
+        if upgraded_hash and await self._users.replace_password_hash(
+            user.id, expected=user.password_hash, password_hash=upgraded_hash
+        ):
+            current_hash = upgraded_hash
 
         # A login starts a new session: a new token family.
-        return await self._issue(user.id, ObjectId(), user_agent)
+        family_id = ObjectId()
+        tokens = await self._issue(user.id, family_id, user_agent)
+
+        # Checking the password took a while (hashing is slow on purpose).
+        # If the password was changed or the account switched off in that
+        # time, this session was opened with what no longer counts. Whoever
+        # did that has already ended the sessions they could see; this one
+        # they couldn't. So look again, now that the session is stored: from
+        # here on, either we notice their change, or their sweep finds us.
+        fresh = await self._users.get(user.id)
+        if fresh is None or not fresh.is_active or fresh.password_hash != current_hash:
+            await self._refresh_tokens.revoke_family(family_id)
+            raise UnauthorizedError("Incorrect email, username or password")
+        return tokens
 
     async def refresh(self, refresh_token: str | None, user_agent: str | None) -> IssuedTokens:
         """Trade a refresh token for a new access token and a new refresh token."""
@@ -168,6 +184,46 @@ class AuthService:
         at most `access_token_ttl_minutes` later.
         """
         await self._refresh_tokens.revoke_all_for_user(user_id)
+
+    async def change_password(self, user: User, current_password: str, new_password: str) -> None:
+        """
+        Set a new password and end every session, this one included.
+
+        The current password is asked for even though the caller is logged
+        in: an access token can be stolen, or a laptop left open, and neither
+        should be enough to take the account over for good.
+        """
+        valid, _ = await verify_password_async(current_password, user.password_hash)
+        if not valid:
+            security_log.warning("Wrong current password on password change for user %s", user.id)
+            raise FieldError("current_password", ["Incorrect password"])
+
+        problems = validate_password(
+            new_password, self._settings, user_inputs=[user.email, user.username]
+        )
+        if new_password == current_password:
+            problems.append("The new password must be different from the current one.")
+        if problems:
+            raise FieldError("new_password", problems)
+
+        # The password first, written only if the one just verified is still
+        # the stored one: two changes at once must not both go through.
+        changed = await self._users.replace_password_hash(
+            user.id,
+            expected=user.password_hash,
+            password_hash=await hash_password_async(new_password),
+        )
+        if not changed:
+            raise FieldError("current_password", ["Incorrect password"])
+        # The sessions second. Deliberately two separate writes and not one
+        # transaction: a transaction works on a snapshot, and would not see a
+        # session that a login stored a moment ago. This sweep sees every
+        # session stored before it runs; a login that stores one later looks
+        # at the account again afterwards (see `login`) and finds the new
+        # password. If this step fails, the password has changed and old
+        # sessions remain until "log out everywhere" is used.
+        await self._refresh_tokens.revoke_all_for_user(user.id)
+        security_log.info("Password changed for user %s", user.id)
 
     async def _report_reuse(self, family_id: ObjectId, user_id: ObjectId) -> None:
         await self._refresh_tokens.revoke_family(family_id)

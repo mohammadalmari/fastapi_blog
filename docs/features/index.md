@@ -7,7 +7,7 @@ parts are, the rules it enforces, and the decisions behind it.
 | ---- | -------------- |
 | [core.md](core.md) | `app/core/`: settings, security middleware, database access, errors, pagination, logging, the health check |
 | [auth.md](auth.md) | `app/auth/`: sign-up, login, refresh tokens, logout, and the current-user dependency |
-| [users.md](users.md) | `app/users/`: the user model and repository, `/users/me`, role assignment |
+| [users.md](users.md) | `app/users/`: the stored user, profiles, the list of accounts, avatars and their storage |
 | [posts.md](posts.md) | `app/posts/`: posts, drafts and publishing, slugs, the feed with tag and author filters, tags |
 | [comments.md](comments.md) | `app/comments/`: comments and one level of replies, deletion and placeholders, the counters kept in transactions |
 | [likes.md](likes.md) | `app/likes/`: likes on posts and comments, one per person, counted in transactions; `liked_by_me` |

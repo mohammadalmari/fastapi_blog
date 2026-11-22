@@ -130,9 +130,8 @@ already given.
 - **Deleting a post removes every like under it in one transaction**, like
   its comments. A post with a very large number of likes could exceed
   MongoDB's transaction time limit, and the delete would then fail.
-- **A deactivated user's likes stay counted**, and they can't log in to take
-  them back. What deactivation does to them is decided with account
-  management.
+- **A deactivated user's likes stay counted**, like everything else they
+  did, and they can't log in to take them back.
 - **Nothing lists who liked something**, and nothing lists what a user has
   liked. Only counts and `liked_by_me` are shown.
 

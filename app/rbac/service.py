@@ -1,14 +1,15 @@
 """Managing roles, and deciding which roles a user has."""
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Iterable, Sequence
+from typing import Protocol
 
 from bson import ObjectId
 
 from app.core.database import Database, Session, in_transaction
-from app.core.errors import ConflictError, FieldError, NotFoundError
+from app.core.errors import ConflictError, FieldError, ForbiddenError, NotFoundError
 from app.rbac.models import Role
 from app.rbac.permissions import ADMIN_ROLE
-from app.rbac.policy import Principal, ensure_can_grant
+from app.rbac.policy import FORBIDDEN, Principal, ensure_can_grant
 from app.rbac.repository import DuplicateRoleError, RoleRepository
 from app.rbac.schemas import RoleCreate, RoleUpdate
 from app.users.models import User
@@ -18,11 +19,27 @@ _NAME_TAKEN = "A role with this name already exists"
 _NOT_FOUND = "Role not found"
 
 
+class StatusChangeStep(Protocol):
+    """Something to do when an account is switched off or on, inside the same transaction."""
+
+    def __call__(self, user_id: ObjectId, *, session: Session) -> Awaitable[None]: ...
+
+
 class RoleService:
-    def __init__(self, db: Database, roles: RoleRepository, users: UserRepository) -> None:
+    def __init__(
+        self,
+        db: Database,
+        roles: RoleRepository,
+        users: UserRepository,
+        on_status_change: Sequence[StatusChangeStep] = (),
+    ) -> None:
         self._db = db
         self._roles = roles
         self._users = users
+        # Ending the account's sessions is the auth feature's business. It is
+        # registered in `get_role_service`; this service knows only that
+        # something may have to happen.
+        self._on_status_change = on_status_change
 
     async def list_roles(self) -> list[Role]:
         return await self._roles.list_all()
@@ -113,7 +130,7 @@ class RoleService:
 
         Somebody must always be able to administer the app. Anything that
         stops a user being an active admin (losing the role here; being
-        deactivated, later) must call this first, inside its transaction.
+        deactivated) must call this first, inside its transaction.
 
         "Is there another admin?" followed by "remove this one" is two steps,
         and two requests removing two different admins could each pass the
@@ -163,6 +180,64 @@ class RoleService:
             return updated or user, roles
 
         return await in_transaction(self._db, work)
+
+    async def set_active(
+        self, principal: Principal, user_id: ObjectId, *, active: bool
+    ) -> tuple[User, list[Role]]:
+        """
+        Deactivate an account, or bring it back. Returns the user and their roles.
+
+        A deactivated account can't log in or use a token, from the very next
+        request. Its sessions are ended for good, so they don't come back to
+        life if the account does.
+        """
+        if user_id == principal.user.id:
+            # Not even an admin with others beside them: an account that
+            # locks itself out can't undo it.
+            raise ConflictError("You can't change your own account's status")
+        admin = await self._admin_role()
+
+        async def work(session: Session) -> tuple[User, list[Role]]:
+            user = await self._users.get(user_id, session=session)
+            if user is None:
+                raise NotFoundError("User not found")
+            roles = await self._roles.get_many(user.role_ids, session=session)
+            # Switching someone off, or back on, is power over everything
+            # they may do. Without this, the permission to deactivate would
+            # be the permission to remove every administrator but one.
+            try:
+                ensure_can_grant(
+                    principal, {permission for role in roles for permission in role.permissions}
+                )
+            except ForbiddenError:
+                # That error lists the permissions the caller lacks, which
+                # here would be a description of the account they asked
+                # about. A plain refusal says nothing about it.
+                raise ForbiddenError(FORBIDDEN) from None
+            if user.is_active == active:
+                return user, roles
+            if not active and admin.id in user.role_ids:
+                await self.ensure_another_active_admin(user.id, session=session)
+            # In both directions. Switching off ends the sessions there are.
+            # A login can still slip one in at that very moment; it is
+            # useless while the account is off, and switching the account
+            # back on ends it too, so nothing from before comes back.
+            for step in self._on_status_change:
+                await step(user.id, session=session)
+            updated = await self._users.set_active(user.id, active, session=session)
+            if updated is None:
+                raise NotFoundError("User not found")
+            return updated, roles
+
+        return await in_transaction(self._db, work)
+
+    async def roles_of(self, users: Iterable[User]) -> dict[ObjectId, list[Role]]:
+        """Each user's roles, by user id: one query for a whole page of users."""
+        users = list(users)
+        # `found` comes back by name, and each user's roles keep that order:
+        # the same as everywhere else roles are shown.
+        found = await self._roles.get_many({role_id for user in users for role_id in user.role_ids})
+        return {user.id: [role for role in found if role.id in user.role_ids] for user in users}
 
     async def _admin_role(self) -> Role:
         admin = await self._roles.get_by_name(ADMIN_ROLE)

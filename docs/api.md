@@ -48,7 +48,15 @@ See [concepts/authentication.md](concepts/authentication.md).
 | Route | Needs | What it does |
 | ----- | ----- | ------------ |
 | `GET /api/v1/users/me` | Login | The caller's account, roles and effective permissions |
+| `PATCH /api/v1/users/me` | Login | Change your username, display name or bio; an empty string clears the last two |
+| `POST /api/v1/users/me/password` | Login, and the current password | Change your password; ends every session |
+| `PUT /api/v1/users/me/avatar` | Login | Upload an avatar (form field `file`; PNG, JPEG or WebP, at most 2 MB) |
+| `DELETE /api/v1/users/me/avatar` | Login | Remove your avatar |
+| `GET /api/v1/users` | `users:read:any` | Every account with its roles, newest first; `is_active` filters |
+| `GET /api/v1/users/{username}` | Nothing | A public profile; a deactivated account has none |
+| `PATCH /api/v1/users/{user_id}/status` | `users:deactivate`, and every permission the account holds | Deactivate an account or bring it back (JSON: `is_active`) |
 | `PUT /api/v1/users/{user_id}/roles` | `users:assign_roles` | Replace a user's roles |
+| `GET /media/avatars/{avatar_key}` | Nothing | An avatar's picture, as addressed by `avatar_url`. Not under `/api/v1` |
 
 ## Posts
 

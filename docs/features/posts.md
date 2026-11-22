@@ -142,7 +142,8 @@ longer edit them.
 
 - `/tags` returns the 100 most used tags and counts them afresh on every
   request. It is a candidate for caching.
-- What happens to a deactivated author's posts is undecided; today they stay.
+- A deactivated author's posts stay, under their name; only the author's
+  profile page goes. Hiding them is a moderator's decision, post by post.
 
 ## Tests
 

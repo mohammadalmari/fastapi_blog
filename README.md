@@ -99,6 +99,9 @@ As a container image:
 docker build --target production -t fastapi-blog .
 ```
 
+Uploaded avatars are written to `./media` (`FASTAPI_MEDIA_DIR`): mount a
+volume there, or they are lost with the container.
+
 The image holds only the runtime dependencies and the `app/` package, runs as
 a non-root user, and contains no `.env`: pass `FASTAPI_SECRET_KEY`,
 `FASTAPI_ALLOWED_HOSTS`, `DATABASE_URL` and `FORWARDED_ALLOW_IPS` as

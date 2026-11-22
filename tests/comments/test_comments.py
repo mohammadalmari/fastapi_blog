@@ -102,7 +102,12 @@ async def test_comment_on_a_post(
     body = response.json()
     assert body["content"] == "Nice post."
     assert (body["post_id"], body["parent_id"]) == (str(post.id), None)
-    assert body["author"] == {"id": str(user.id), "username": "jane", "display_name": None}
+    assert body["author"] == {
+        "id": str(user.id),
+        "username": "jane",
+        "display_name": None,
+        "avatar_url": None,
+    }
     assert (body["is_deleted"], body["reply_count"], body["like_count"]) == (False, 0, 0)
 
     stored = await db.comments.find_one({})

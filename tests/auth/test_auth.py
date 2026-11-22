@@ -287,6 +287,7 @@ async def test_me_returns_the_logged_in_user(
         "username",
         "display_name",
         "bio",
+        "avatar_url",
         "is_active",
         "created_at",
         "roles",

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, Header, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.auth.dependencies import AuthServiceDep, CurrentUserDep, verify_origin
-from app.auth.schemas import RegisterRequest, TokenResponse
+from app.auth.schemas import ChangePasswordRequest, RegisterRequest, TokenResponse
 from app.auth.service import IssuedTokens
 from app.core.errors import error_responses
 from app.core.settings import Settings, SettingsDep
@@ -17,6 +17,9 @@ from app.users.models import User
 from app.users.schemas import UserAccount
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+# Changing a password is about the account, so its address is under
+# /users/me; it is about credentials and sessions, so its code is here.
+password_router = APIRouter(prefix="/users/me/password", tags=["users"])
 
 # An OAuth2 "password" form, not JSON: fields `username` and `password`. That
 # is the format the /docs "Authorize" button sends.
@@ -128,4 +131,26 @@ async def logout_all(
 ) -> None:
     """End every session of the current user, on every device."""
     await service.logout_all(user.id)
+    _clear_cookie(response, settings)
+
+
+@password_router.post(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(status.HTTP_401_UNAUTHORIZED),
+)
+async def change_password(
+    data: ChangePasswordRequest,
+    user: CurrentUserDep,
+    response: Response,
+    service: AuthServiceDep,
+    settings: SettingsDep,
+) -> None:
+    """
+    Change your password. Needs the current one.
+
+    Every session ends, this one included: log in again with the new
+    password. Access tokens already issued work until they expire.
+    """
+    await service.change_password(user, data.current_password, data.new_password)
     _clear_cookie(response, settings)

@@ -85,7 +85,12 @@ async def test_create_a_post(
     assert body["tags"] == ["fastapi"]
     assert (body["status"], body["published_at"]) == ("draft", None)
     assert (body["like_count"], body["comment_count"]) == (0, 0)
-    assert body["author"] == {"id": str(author.id), "username": "ali", "display_name": None}
+    assert body["author"] == {
+        "id": str(author.id),
+        "username": "ali",
+        "display_name": None,
+        "avatar_url": None,
+    }
 
     stored = await db.posts.find_one({"slug": body["slug"]})
     assert stored is not None

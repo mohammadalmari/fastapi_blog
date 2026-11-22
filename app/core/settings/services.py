@@ -31,6 +31,14 @@ class ServicesSettings(EnvironmentSettings):
     database_name: str = Field(default="fastapi_blog", validation_alias="DATABASE_NAME")
 
     # -----------------------------------------------------------------------
+    # Uploaded files
+    # -----------------------------------------------------------------------
+
+    # Where avatars are kept (see app.core.storage). In a real deployment
+    # point it at a disk that outlives the container, e.g. a mounted volume.
+    media_dir: Path = ROOT_DIR / "media"
+
+    # -----------------------------------------------------------------------
     # Logging (see app.core.logs for how these are used)
     # -----------------------------------------------------------------------
 

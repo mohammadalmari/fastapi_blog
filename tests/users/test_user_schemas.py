@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.auth.schemas import RegisterRequest
-from app.users.schemas import normalize_login_identifier
+from app.users.schemas import ProfileUpdate, normalize_login_identifier
 
 VALID = {"email": "jane@example.com", "username": "jane", "password": "correct horse battery"}
 
@@ -71,3 +71,50 @@ def test_the_login_identifier_is_normalized_like_sign_up(
     typed: str, lookup: tuple[str, str]
 ) -> None:
     assert normalize_login_identifier(typed) == lookup
+
+
+def test_nobody_can_be_called_me() -> None:
+    """`/users/me` is the caller's own account; a user called "me" would have no profile page."""
+    with pytest.raises(ValidationError):
+        ProfileUpdate.model_validate({"username": "me"})
+
+
+@pytest.mark.parametrize(
+    ("sent", "kept"),
+    [
+        ({"display_name": "  Jane Doe  "}, {"display_name": "Jane Doe"}),
+        ({"display_name": "x" * 50}, {"display_name": "x" * 50}),
+        (
+            {"display_name": "\u0645\u062d\u0645\u062f"},
+            {"display_name": "\u0645\u062d\u0645\u062f"},
+        ),
+        ({"bio": "Line one.\nLine two."}, {"bio": "Line one.\nLine two."}),
+        ({"bio": "x" * 500}, {"bio": "x" * 500}),
+        ({"bio": "", "display_name": ""}, {"bio": "", "display_name": ""}),
+        ({"username": "Jane_2"}, {"username": "jane_2"}),
+        ({}, {}),
+    ],
+)
+def test_profile_fields_people_actually_send_are_accepted(
+    sent: dict[str, str], kept: dict[str, str]
+) -> None:
+    assert ProfileUpdate.model_validate(sent).model_dump(exclude_none=True) == kept
+
+
+@pytest.mark.parametrize(
+    "sent",
+    [
+        {"display_name": "x" * 51},
+        {"display_name": "Jane\nDoe"},  # a name is one line
+        {"display_name": "Jane\u202eDoe"},  # right-to-left override: text shown reversed
+        {"display_name": "Jane\u200b"},  # zero-width space
+        {"bio": "x" * 501},
+        {"bio": "Hello\u0000"},
+        {"bio": "Hello\u202e"},
+        {"username": "jane doe"},
+        {"display_name": 5},
+    ],
+)
+def test_profile_fields_that_would_mislead_or_overflow_are_refused(sent: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        ProfileUpdate.model_validate(sent)

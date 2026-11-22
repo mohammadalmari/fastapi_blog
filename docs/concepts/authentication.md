@@ -101,6 +101,21 @@ servers don't send one, and they are not cross-site browser requests.
 There is no CSRF middleware because every other route authenticates with the
 `Authorization` header, which a browser never attaches on its own.
 
+### What ends sessions
+
+| Event | Ends |
+| ----- | ---- |
+| `POST /auth/logout` | The session of the cookie presented |
+| `POST /auth/logout-all` | Every session of the caller |
+| A refresh token used twice | That session |
+| Changing the password | Every session of the user, the caller's included |
+| Deactivating an account, and reactivating it | Every session of that user |
+
+"Ends" means the refresh tokens are revoked. An access token already issued
+keeps working until it expires, fifteen minutes at most, except for a
+deactivated account: the user is loaded on every request, so that token
+stops at once.
+
 ## What a first-time reader should know
 
 - Two tabs refreshing at the same instant look like reuse, and that session

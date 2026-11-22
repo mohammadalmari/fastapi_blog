@@ -7,14 +7,15 @@ feature.
 
 | Module | What it provides |
 | ------ | ---------------- |
-| `settings/` | One `Settings` class built from three modules: `environment` (the debug switch, secret key, allowed hosts), `security` (constants and security settings), `services` (database, logging) |
+| `settings/` | One `Settings` class built from three modules: `environment` (the debug switch, secret key, allowed hosts), `security` (constants and security settings), `services` (database, media folder, logging) |
 | `security/middleware.py` | `install_security(app, settings)`: trusted host, HTTPS redirect, CORS, security headers |
 | `security/passwords.py` | Argon2 hashing, the async wrappers on their own thread pool, the password policy |
 | `security/tokens.py` | Access tokens (JWT) and refresh tokens (random strings and their hashes) |
 | `database.py` | The client, `DbDep`, `register_indexes`, `in_transaction`, `utcnow` |
-| `errors.py` | The errors services raise, and the handlers that turn them into responses |
+| `errors.py` | The errors services raise (401, 403, 404, 409, 413, 422), and the handlers that turn them into responses |
 | `types.py` | `PyObjectId` |
 | `text.py` | Checks on text people will read: `has_hidden_characters`, `has_visible_characters` |
+| `storage.py` | The `Storage` protocol for uploaded files, `LocalStorage`, and `StorageDep` |
 | `caching.py` | `never_cache` and `varies_by_login`: keeping one person's response out of shared caches |
 | `pagination.py` | `PageParamsDep`, `Page[T]`, and the cursor helpers |
 | `logs.py` | `configure_logging(settings)` and the `app.security` logger name |

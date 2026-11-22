@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import Depends
 
 from app.auth.dependencies import CurrentUserDep, OptionalUserDep
+from app.auth.repository import RefreshTokenRepository
 from app.core.database import DbDep
 from app.core.errors import ForbiddenError
 from app.rbac.permissions import Perm
@@ -33,7 +34,10 @@ __all__ = [
 async def get_role_service(
     db: DbDep, roles: RoleRepositoryDep, users: UserRepositoryDep
 ) -> RoleService:
-    return RoleService(db, roles, users)
+    # Here is where "switching an account off or on ends its sessions" is wired up.
+    return RoleService(
+        db, roles, users, on_status_change=[RefreshTokenRepository(db).revoke_all_for_user]
+    )
 
 
 RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]

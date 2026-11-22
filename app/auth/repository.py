@@ -6,7 +6,7 @@ from bson import ObjectId
 from pymongo import IndexModel
 
 from app.auth.models import RefreshToken
-from app.core.database import Database, Document, register_indexes, utcnow
+from app.core.database import Database, Document, Session, register_indexes, utcnow
 
 COLLECTION = "refresh_tokens"
 
@@ -70,12 +70,15 @@ class RefreshTokenRepository:
         """End one session: every token descended from the same login."""
         await self._revoke_many({"family_id": family_id})
 
-    async def revoke_all_for_user(self, user_id: ObjectId) -> None:
+    async def revoke_all_for_user(
+        self, user_id: ObjectId, *, session: Session | None = None
+    ) -> None:
         """End every session of a user."""
-        await self._revoke_many({"user_id": user_id})
+        await self._revoke_many({"user_id": user_id}, session=session)
 
-    async def _revoke_many(self, query: Document) -> None:
+    async def _revoke_many(self, query: Document, *, session: Session | None = None) -> None:
         await self._tokens.update_many(
             {**query, "revoked_at": None},
             {"$set": {"revoked_at": utcnow()}},
+            session=session,
         )

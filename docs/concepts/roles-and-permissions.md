@@ -124,7 +124,7 @@ by name.
   description. Startup does the rest, and `admin` gains it automatically.
 - Anything that stops a user being an active admin must call
   `ensure_another_active_admin` inside its transaction. Today that is role
-  assignment; deactivating users will need it too.
+  assignment and deactivating an account.
 - A role id on a user that matches no role is ignored. It grants nothing.
 - An admin can still give the default role any permission they hold. Only the
   `admin` role itself is barred from being the default.

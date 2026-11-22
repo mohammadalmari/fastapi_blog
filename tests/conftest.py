@@ -130,7 +130,7 @@ def database_url() -> SecretStr | None:
 def _build_settings(
     database_name: str,
     database_url: SecretStr | None,
-    log_dir: Path,
+    scratch: Path,
     overrides: dict[str, Any],
 ) -> Settings:
     values: dict[str, Any] = {
@@ -142,7 +142,9 @@ def _build_settings(
         "cors_allowed_origins": [],
         "cors_allow_credentials": False,
         # Production-mode apps write log files; keep them out of the project.
-        "log_dir": log_dir,
+        "log_dir": scratch / "logs",
+        # Uploaded avatars, likewise.
+        "media_dir": scratch / "media",
         **overrides,
     }
     # `_env_file=None`: apart from the database URL, ignore the developer's
@@ -157,7 +159,7 @@ def _build_settings(
 def default_settings(
     database_name: str, database_url: SecretStr | None, tmp_path_factory: pytest.TempPathFactory
 ) -> Settings:
-    return _build_settings(database_name, database_url, tmp_path_factory.mktemp("logs"), {})
+    return _build_settings(database_name, database_url, tmp_path_factory.mktemp("scratch"), {})
 
 
 @pytest.fixture(scope="module")
@@ -176,8 +178,8 @@ def settings(
 ) -> Settings:
     if not settings_overrides:
         return default_settings
-    log_dir = tmp_path_factory.mktemp("logs")
-    return _build_settings(database_name, database_url, log_dir, settings_overrides)
+    scratch = tmp_path_factory.mktemp("scratch")
+    return _build_settings(database_name, database_url, scratch, settings_overrides)
 
 
 # --- app and database -------------------------------------------------------

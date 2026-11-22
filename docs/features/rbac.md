@@ -10,7 +10,8 @@ this page is about the code.
 - The permission catalog, in code.
 - The `roles` and `permissions` collections.
 - The routes under `/api/v1/roles` and `/api/v1/permissions`.
-- The logic behind `PUT /api/v1/users/{user_id}/roles`.
+- The logic behind `PUT /api/v1/users/{user_id}/roles` and
+  `PATCH /api/v1/users/{user_id}/status`.
 - The seed command, `app/scripts/seed.py`.
 
 ## The modules
@@ -58,6 +59,8 @@ sync keeps identical.
 | `update_role` | System roles keep their name; `admin` keeps its permissions and can't be the default; the default flag can be moved but not removed; added permissions must be held |
 | `delete_role` | Not a system role, not the default; removed from its holders in the same transaction |
 | `assign_roles` | Unknown ids are refused; roles added or removed must be within the caller's permissions; the last active admin stays |
+| `set_active` | Not on yourself; the caller must hold every permission the account holds; the last active admin stays; deactivating ends the account's sessions in the same transaction |
+| `roles_of` | Each user's roles for a page of users, in one query |
 | `ensure_another_active_admin` | The lock and the count, for any code that stops a user being an active admin |
 
 ## Using it from another feature
@@ -87,6 +90,35 @@ if principal.can(any_=Perm.POSTS_READ_DRAFTS_ANY, owner_id=post.author_id): ...
   value it already has is no write, and locks nothing; hence a counter.
 - **Clear the old default before setting the new one.** The unique index
   allows one default at a time, even in the middle of a transaction.
+
+## Deactivating an account
+
+`PATCH /users/{id}/status` with `{"is_active": false}`, for holders of
+`users:deactivate`.
+
+- **It takes effect on the next request.** The user is loaded from the
+  database on every request, so the token stops working at once; logging in
+  and refreshing are refused too.
+- **Sessions are ended for good**, when an account is switched off and
+  again when it is switched back on. The second sweep is for a login that
+  slipped in at the very moment of deactivation: its session is useless
+  while the account is off, and must not come back with it. Ending sessions
+  is the auth feature's business: `get_role_service` registers it as a step
+  that runs inside the transaction, and `RoleService` imports nothing from
+  auth.
+- **You need every permission the account holds**, to switch it off or back
+  on. Without that, "deactivate users" alone would be the power to remove
+  every administrator but one. A consequence: a moderator role needs the
+  reader permissions as well, or it can't deactivate ordinary readers.
+- **The refusal says nothing about the account.** The usual "you can't
+  grant ..." message lists the permissions the caller lacks, which here
+  would describe the account they asked about and pick out administrators.
+- **The answer shows the account's email**, as the list does, to whoever may
+  deactivate it. It is never cached.
+- **Nobody changes their own status**, and the last active admin can't be
+  deactivated by anyone.
+- **Nothing the account wrote is touched.** Its posts, comments and likes
+  stay; its profile page is "not found" (see [users.md](users.md)).
 
 ## Key decisions
 
