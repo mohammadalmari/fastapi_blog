@@ -47,8 +47,11 @@ HERE = "127.0.0.1"
 TOO_MANY = {"detail": "Too many requests. Try again later."}
 # The limiter's clock, held still in the middle of every rule's window. With
 # the real clock, a window ending between two requests of one test would
-# turn an expected refusal into a pass, once in a few hundred runs.
-NOON = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+# turn an expected refusal into a pass, once in a few hundred runs. It is set
+# far in the future so that nothing a test counts is ever expired: MongoDB
+# deletes expired counters every sixty seconds, mid-test if it comes to that
+# (see tests/core/test_ratelimit.py).
+NOON = datetime(2100, 1, 1, 12, 0, 30, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)

@@ -15,8 +15,13 @@ from app.core.settings.limits import RateLimit
 pytestmark = pytest.mark.anyio
 
 THRICE_A_MINUTE = RateLimit("test-rule", 3, 60)
-# The middle of a window, so no test straddles the end of one by accident.
-NOON = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+# The limiter's clock, held still: the middle of a window, so no test
+# straddles the end of one by accident. And far in the future, on purpose.
+# Counters carry an expiry date, and MongoDB sweeps expired documents away
+# every sixty seconds. With a clock in the past, every counter a test made
+# was already expired, and a sweep landing mid-test deleted it: about one
+# run in seventy failed on whichever test the sweep happened to hit.
+NOON = datetime(2100, 1, 1, 12, 0, 30, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
