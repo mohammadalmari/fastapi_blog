@@ -16,6 +16,20 @@ a `Retry-After` header when used too often.
 Request and response shapes, field rules and error codes are there. All three
 are served in debug mode only.
 
+To get the schema as a file, with no server running and no database:
+
+```bash
+uv run python -m app.scripts.export_openapi --output openapi.json
+```
+
+It works outside debug mode too. A client generated from that file, such as
+the frontend's, is regenerated whenever a route or a schema changes.
+
+Each route's `operationId` is its section and its function's name
+(`posts-list_tags`), which is what a generated client calls its function
+(`postsListTags`). Renaming a route function therefore renames it for every
+client: treat the names as part of the API.
+
 ## Conventions
 
 - Feature routes are under `/api/v1`. `/health` is not: load balancers and

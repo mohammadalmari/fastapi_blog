@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from asyncer import asyncify
 from fastapi import APIRouter, FastAPI
+from fastapi.routing import APIRoute
 
 from app.auth.router import password_router
 from app.auth.router import router as auth_router
@@ -52,6 +53,17 @@ API_TAGS = [
 ]
 
 
+def _operation_id(route: APIRoute) -> str:
+    """
+    A route's name in the schema: its section and its function, "posts-list_tags".
+
+    FastAPI's default adds the whole path and the method
+    ("list_tags_api_v1_tags_get"), and client generators name their functions
+    after it. This is the form its docs suggest for generated clients.
+    """
+    return f"{route.tags[0]}-{route.name}"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """
     Build the app.
@@ -99,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # switch turns /openapi.json, /docs and /redoc off outside DEBUG.
         openapi_url=OPENAPI_URL if settings.docs_enabled else None,
         max_body_size=MAX_BODY_SIZE,
+        generate_unique_id_function=_operation_id,
     )
     # Where `SettingsDep` finds them: routes get the settings this app was
     # built with, which in tests are not the ones from the environment.

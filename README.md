@@ -18,7 +18,9 @@ PyMongo's async client.
 | [Features](docs/features/index.md) | One page per folder under `app/` |
 
 With the app running in debug mode, the full API reference is at
-http://127.0.0.1:8000/docs.
+http://127.0.0.1:8000/docs. `uv run python -m app.scripts.export_openapi`
+writes its schema to a file for generating clients; see the
+[API overview](docs/api.md).
 
 ## Getting started
 
