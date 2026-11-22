@@ -27,6 +27,10 @@ class Storage(Protocol):
         """Remove the key. Removing one that isn't there is not an error."""
         ...
 
+    async def check(self) -> None:
+        """Raise if files can't be stored. Called once, when the app starts."""
+        ...
+
 
 class LocalStorage:
     """Files in a folder on this machine. Fine for one server; not for several."""
@@ -53,6 +57,20 @@ class LocalStorage:
 
     async def delete(self, key: str) -> None:
         await asyncify(self._path(key).unlink)(missing_ok=True)
+
+    async def check(self) -> None:
+        # Write and remove a small file. A folder the process may not write
+        # to (a mounted volume owned by another user is the usual case) is
+        # then found at startup, not by the first person to upload a picture.
+        probe = f".writable-{secrets.token_hex(4)}"
+        try:
+            await self.save(probe, b"")
+            await self.delete(probe)
+        except OSError as error:
+            raise RuntimeError(
+                f"The media folder {self._root} can't be written to: {error}. "
+                "Set FASTAPI_MEDIA_DIR to a folder this process may write in."
+            ) from error
 
     @staticmethod
     def _write(path: Path, data: bytes) -> None:

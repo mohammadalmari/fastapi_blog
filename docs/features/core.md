@@ -8,17 +8,20 @@ feature.
 | Module | What it provides |
 | ------ | ---------------- |
 | `settings/` | One `Settings` class built from three modules: `environment` (the debug switch, secret key, allowed hosts), `security` (constants and security settings), `services` (database, media folder, logging) |
-| `security/middleware.py` | `install_security(app, settings)`: trusted host, HTTPS redirect, CORS, security headers |
+| `security/middleware.py` | `install_security(app, settings)`: request id, security headers, trusted host, HTTPS redirect, CORS, and a last-resort handler for unhandled errors |
 | `security/passwords.py` | Argon2 hashing, the async wrappers on their own thread pool, the password policy |
 | `security/tokens.py` | Access tokens (JWT) and refresh tokens (random strings and their hashes) |
 | `database.py` | The client, `DbDep`, `register_indexes`, `in_transaction`, `utcnow` |
-| `errors.py` | The errors services raise (401, 403, 404, 409, 413, 422), and the handlers that turn them into responses |
+| `errors.py` | The errors services raise (401, 403, 404, 409, 413, 422, 429), and the handlers that turn them into responses |
 | `types.py` | `PyObjectId` |
 | `text.py` | Checks on text people will read: `has_hidden_characters`, `has_visible_characters` |
-| `storage.py` | The `Storage` protocol for uploaded files, `LocalStorage`, and `StorageDep` |
+| `storage.py` | The `Storage` protocol for uploaded files, `LocalStorage`, `StorageDep`, and the write check run at startup |
+| `ratelimit.py` | `RateLimiter` and `limit_by_address`; owns the `rate_limits` collection (see [rate limiting](../concepts/rate-limiting.md)) |
+| `request_id.py` | `RequestIdMiddleware`: an id for every request, on its response and its log lines |
+| `ttl.py` | `Remembered`: a value kept for a short while instead of worked out on every request |
 | `caching.py` | `never_cache` and `varies_by_login`: keeping one person's response out of shared caches |
 | `pagination.py` | `PageParamsDep`, `Page[T]`, and the cursor helpers |
-| `logs.py` | `configure_logging(settings)` and the `app.security` logger name |
+| `logs.py` | `configure_logging(settings)`: a readable line in debug, JSON in production, the request id on both; the `app.security` logger name |
 | `health.py` | `GET /health` |
 
 ## Settings

@@ -1,11 +1,13 @@
-from typing import Annotated
+from typing import Annotated, cast
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Request
 
 from app.comments.repository import CommentRepository
 from app.core.database import DbDep
+from app.core.ttl import Remembered
 from app.core.types import PyObjectId
 from app.likes.repository import LikeRepository
+from app.posts.models import TagCount
 from app.posts.repository import PostRepository
 from app.posts.service import PostService
 from app.users.dependencies import UserRepositoryDep
@@ -21,8 +23,16 @@ async def get_post_repository(db: DbDep) -> PostRepository:
 PostRepositoryDep = Annotated[PostRepository, Depends(get_post_repository)]
 
 
+async def get_tag_cache(request: Request) -> Remembered[list[TagCount]]:
+    """The app's one remembered list of tags (see ``app.main``)."""
+    return cast(Remembered[list[TagCount]], request.app.state.tag_cache)
+
+
 async def get_post_service(
-    db: DbDep, posts: PostRepositoryDep, users: UserRepositoryDep
+    db: DbDep,
+    posts: PostRepositoryDep,
+    users: UserRepositoryDep,
+    tag_cache: Annotated[Remembered[list[TagCount]], Depends(get_tag_cache)],
 ) -> PostService:
     # Here is where "deleting a post deletes its comments and likes" is wired
     # up, and where posts learn which of them the caller has liked. The other
@@ -35,6 +45,7 @@ async def get_post_service(
         users,
         on_delete=[CommentRepository(db).delete_for_post, likes.delete_for_post],
         liked=likes.liked_posts,
+        tag_cache=tag_cache,
     )
 
 

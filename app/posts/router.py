@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Path, Query, Response, status
 from app.core.caching import never_cache, varies_by_login
 from app.core.errors import error_responses
 from app.core.pagination import Page
+from app.core.settings import SettingsDep
 from app.posts.dependencies import PostId, PostServiceDep
 from app.posts.models import PostView
 from app.posts.repository import TAG_LIMIT
@@ -175,5 +176,11 @@ async def list_my_posts(
 
 
 @tags_router.get("", description=f"The {TAG_LIMIT} most used tags on published posts.")
-async def list_tags(service: PostServiceDep) -> list[TagCount]:
+async def list_tags(
+    service: PostServiceDep, settings: SettingsDep, response: Response
+) -> list[TagCount]:
+    if settings.tags_cache_seconds:
+        # The same for everyone, and already a little behind: browsers and
+        # proxies may keep it for as long as the app itself does.
+        response.headers["Cache-Control"] = f"public, max-age={settings.tags_cache_seconds}"
     return [TagCount(name=tag.name, count=tag.count) for tag in await service.tags()]

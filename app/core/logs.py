@@ -13,23 +13,67 @@ Two sinks, deliberately:
 Loggers reach these handlers through the **root** logger. Get one with
 ``logging.getLogger(__name__)`` anywhere under ``app``; security events
 (failed logins, token reuse, permission denials) go to ``app.security``.
+
+Two formats, deliberately:
+
+* In development, a line a person reads.
+* In production, one JSON object per line. Whatever collects the logs can
+  then filter on a field (every line of one request, every security event)
+  without guessing at the layout of a sentence.
+
+Every line carries the id of the request it was written for (see
+``core.request_id``), or ``-`` outside a request.
 """
 
+import json
 import logging
 import logging.config
+from datetime import UTC, datetime
+from typing import override
 
+from app.core.request_id import request_id
 from app.core.settings import Settings
 
 SECURITY_LOGGER = "app.security"
 
 
+class RequestIdFilter(logging.Filter):
+    """Put the current request's id on every record, for the formatters to print."""
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id.get() or "-"
+        return True
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line."""
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        entry: dict[str, object] = {
+            "time": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+        }
+        if record.exc_info:
+            entry["exception"] = self.formatException(record.exc_info)
+        # `json.dumps` escapes line breaks, so a message can never be made to
+        # look like two entries, whatever a user managed to get into it.
+        return json.dumps(entry, ensure_ascii=False)
+
+
 def configure_logging(settings: Settings) -> None:
+    formatter = "verbose" if settings.debug else "json"
     handlers: dict[str, dict[str, object]] = {
         "console": {
             "level": settings.log_level,
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
-            "formatter": "verbose",
+            "formatter": formatter,
+            "filters": ["request_id"],
         },
     }
     root_handlers = ["console"]
@@ -56,7 +100,8 @@ def configure_logging(settings: Settings) -> None:
                 # Open on first write, so a process that never errors leaves no
                 # empty error log.
                 "delay": True,
-                "formatter": "verbose",
+                "formatter": formatter,
+                "filters": ["request_id"],
             }
 
         handlers["error_file"] = rotating_file("error.log", "ERROR")
@@ -67,19 +112,27 @@ def configure_logging(settings: Settings) -> None:
         # record survives independently of rotation on the main stream.
         loggers[SECURITY_LOGGER]["handlers"] = ["security_file"]
 
-        # Unhandled 500s are logged by uvicorn, whose loggers don't propagate
-        # to the root logger; attach the error file so the traceback is kept.
-        loggers["uvicorn.error"] = {"handlers": ["error_file"], "level": "INFO", "propagate": True}
+        # The server's own lines (startup, one per request, its errors) are
+        # written by uvicorn through handlers of its own, as plain text. Take
+        # those handlers away and let the records travel up to ours, so that
+        # everything on the console is JSON and errors reach the error file.
+        for server_logger in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+            loggers[server_logger] = {"handlers": [], "level": "INFO", "propagate": True}
 
     logging.config.dictConfig(
         {
             "version": 1,
             "disable_existing_loggers": False,
+            "filters": {"request_id": {"()": RequestIdFilter}},
             "formatters": {
                 "verbose": {
-                    "format": "{levelname} {asctime} [{process:d}] {name} {message}",
+                    "format": "{levelname} {asctime} [{process:d}] [{request_id}] {name} {message}",
                     "style": "{",
+                    # For a record that reaches this formatter through a
+                    # handler without the filter: a dash, not an error.
+                    "defaults": {"request_id": "-"},
                 },
+                "json": {"()": JsonFormatter},
             },
             "handlers": handlers,
             "root": {"handlers": root_handlers, "level": settings.log_level},

@@ -51,6 +51,11 @@ It does not own users. It creates and reads them through `UserRepository`.
   Only the first is logged as a security event.
 - **Always verify a hash at login**, the dummy one when the account doesn't
   exist.
+- **The account lock is keyed on what was typed, account or not**, and its
+  place is taken before the password is checked, then given back on
+  success. Counting after the check would let a burst of guesses through. A lock that existed only for real accounts
+  would tell a stranger which emails are registered. See
+  [rate limiting](../concepts/rate-limiting.md).
 - **Revoke by family or by user, never a single token**, when ending a
   session.
 - **Changing a password asks for the current one**, although the caller is
@@ -90,7 +95,8 @@ It does not own users. It creates and reads them through `UserRepository`.
 
 ## Tests
 
-`tests/auth/test_auth.py` and `tests/auth/test_change_password.py` over HTTP,
+`tests/auth/test_auth.py`, `tests/auth/test_change_password.py` and
+`tests/auth/test_rate_limits.py` over HTTP,
 `tests/auth/test_auth_production.py` for what only
 exists in production mode (the `Secure` cookie, the strict password policy,
 the Origin check), and unit tests in `tests/core/test_tokens.py` and

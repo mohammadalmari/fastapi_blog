@@ -1,5 +1,7 @@
 """Auth behaviour that only exists outside debug: the app is built in production mode."""
 
+import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -7,6 +9,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from app.core.logs import configure_logging
+from app.core.settings import Settings
 from tests.helpers import API, login, refresh_cookie, register
 
 pytestmark = [pytest.mark.anyio, pytest.mark.usefixtures("user")]
@@ -89,3 +93,34 @@ async def test_cookie_routes_accept_known_origins_and_non_browsers(
     )
 
     assert response.status_code in (200, 204)
+
+
+async def test_production_logs_are_json_with_the_request_id(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """The security log is a file in production; each line must be one JSON object."""
+    response = await login(client, password="not the password")
+
+    assert response.status_code == 401
+    lines = (settings.log_dir / "security.log").read_text().splitlines()
+    entry = json.loads(lines[-1])
+    assert entry["message"].startswith("Failed login")
+    assert entry["request_id"] == response.headers["x-request-id"]
+    assert entry["level"] == "WARNING"
+
+
+@pytest.mark.parametrize("name", ["uvicorn", "uvicorn.error", "uvicorn.access"])
+async def test_the_servers_own_lines_go_through_the_apps_handlers(
+    settings: Settings, name: str
+) -> None:
+    """Otherwise the console is JSON mixed with the server's plain text."""
+    # As the server leaves its loggers before the app is loaded: with a
+    # handler of their own, and not passing records on.
+    server_logger = logging.getLogger(name)
+    server_logger.addHandler(logging.NullHandler())
+    server_logger.propagate = False
+
+    configure_logging(settings)
+
+    assert server_logger.handlers == []
+    assert server_logger.propagate is True

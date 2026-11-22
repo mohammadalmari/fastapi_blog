@@ -2,10 +2,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Response, UploadFile, status
 
+from app.auth.dependencies import limit_by_user
 from app.core.caching import never_cache
 from app.core.errors import error_responses
 from app.core.pagination import Page
-from app.core.settings.security import AVATAR_MAX_BODY_SIZE, AVATAR_MAX_BYTES
+from app.core.settings.security import AVATAR_MAX_BODY_SIZE, AVATAR_MAX_BYTES, AVATARS_PER_USER
 from app.core.types import PyObjectId
 
 # Import rule between features: auth and rbac may import anything from users.
@@ -86,8 +87,9 @@ async def update_me(
 @router.put(
     "/me/avatar",
     response_model=UserMe,
+    dependencies=[Depends(limit_by_user(AVATARS_PER_USER))],
     responses={
-        **error_responses(status.HTTP_401_UNAUTHORIZED),
+        **error_responses(status.HTTP_401_UNAUTHORIZED, status.HTTP_429_TOO_MANY_REQUESTS),
         # These two can also come from the framework before the route runs,
         # and then as plain text, not in the shape the app's own errors have.
         status.HTTP_400_BAD_REQUEST: {"description": "More than the one file was sent."},

@@ -128,7 +128,8 @@ Files go through the `Storage` protocol in `app/core/storage.py`. The one
 implementation, `LocalStorage`, keeps them in `FASTAPI_MEDIA_DIR` (default
 `./media`). That suits one server with a disk that outlives it; with several
 servers, write another class for an object store and swap it in
-`create_app`.
+`create_app`. At startup the app writes and removes a small file there; a
+folder it may not write to stops it then, not at the first upload.
 
 ## Key decisions
 
@@ -155,9 +156,7 @@ servers, write another class for an object store and swap it in
   deactivated accounts stay served, too.
 - Colour profiles are dropped without converting to sRGB, so a photo taken
   in a wider colour space looks slightly duller.
-- An unwritable media folder shows as an error on the first upload, not at
-  startup.
-- No rate limit on uploads yet.
+- Uploads are rate limited to 10 an hour for each user.
 
 ## Tests
 

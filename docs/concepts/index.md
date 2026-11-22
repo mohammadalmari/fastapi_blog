@@ -9,6 +9,7 @@ first-time reader should know.
 | [authentication.md](authentication.md) | The two tokens, the refresh cookie, rotation and reuse detection, logout, and the Origin check that stands in for CSRF protection |
 | [roles-and-permissions.md](roles-and-permissions.md) | The permission catalog, roles, how a request is checked, "you can't grant what you don't hold", and the rules that keep the system administrable |
 | [security.md](security.md) | The debug switch, what production mode turns on, response headers, CORS, the password policy, and limits on expensive work |
+| [rate-limiting.md](rate-limiting.md) | Which routes are limited and why, counting in the database, by user or by address, and the account lock at login |
 | [database.md](database.md) | MongoDB without an ODM, why a replica set is required, transactions, indexes, and timestamps |
 | [testing.md](testing.md) | How the tests are set up, the rules for writing them, and how the suite stays fast |
 

@@ -9,8 +9,9 @@ from bson import ObjectId
 from app.auth.repository import RefreshTokenRepository
 from app.auth.schemas import RegisterRequest
 from app.core.database import utcnow
-from app.core.errors import ConflictError, FieldError, UnauthorizedError
+from app.core.errors import ConflictError, FieldError, TooManyRequestsError, UnauthorizedError
 from app.core.logs import SECURITY_LOGGER
+from app.core.ratelimit import RateLimiter
 from app.core.security import (
     create_access_token,
     dummy_hash,
@@ -21,10 +22,11 @@ from app.core.security import (
     verify_password_async,
 )
 from app.core.settings import Settings
-from app.core.settings.security import PASSWORD_MAX_LENGTH
+from app.core.settings.security import LOGIN_FAILURES_PER_ACCOUNT, PASSWORD_MAX_LENGTH
 from app.rbac.repository import RoleRepository
 from app.users.models import User
 from app.users.repository import DuplicateUserError, UserRepository
+from app.users.schemas import normalize_login_identifier
 
 security_log = logging.getLogger(SECURITY_LOGGER)
 
@@ -44,11 +46,13 @@ class AuthService:
         users: UserRepository,
         refresh_tokens: RefreshTokenRepository,
         roles: RoleRepository,
+        limiter: RateLimiter,
         settings: Settings,
     ) -> None:
         self._users = users
         self._refresh_tokens = refresh_tokens
         self._roles = roles
+        self._limiter = limiter
         self._settings = settings
 
     async def register(self, data: RegisterRequest) -> User:
@@ -75,12 +79,29 @@ class AuthService:
         except DuplicateUserError as error:
             # This does tell a stranger that an email has an account. Closing
             # that needs email verification (answer the same either way, and
-            # mail the owner), which is planned for after v1.
+            # mail the owner), which is out of scope for this version.
             raise ConflictError(
                 "Email already registered" if error.field == "email" else "Username already taken"
             ) from error
 
     async def login(self, identifier: str, password: str, user_agent: str | None) -> IssuedTokens:
+        # Too many failures for this account lately: refuse before checking
+        # anything, the right password included. Counted by what was typed,
+        # normalized as the lookup normalizes it, whether or not an account
+        # has that name: the answer then says nothing about which exist.
+        #
+        # Only failures are meant to count, but the place is taken now and
+        # given back if the login succeeds. Counting afterwards, once the
+        # password has been checked, would let a burst of guesses sent
+        # together all through: checking takes a while, and each would be
+        # let in before any of them had been counted.
+        account = ":".join(normalize_login_identifier(identifier))
+        try:
+            place = await self._limiter.hit(LOGIN_FAILURES_PER_ACCOUNT, account)
+        except TooManyRequestsError:
+            security_log.warning("Login refused: locked after repeated failures")
+            raise
+
         user = await self._users.get_by_login(identifier)
 
         # Always verify something, even for an unknown account (see dummy_hash).
@@ -118,6 +139,7 @@ class AuthService:
         if fresh is None or not fresh.is_active or fresh.password_hash != current_hash:
             await self._refresh_tokens.revoke_family(family_id)
             raise UnauthorizedError("Incorrect email, username or password")
+        await self._limiter.give_back(place)
         return tokens
 
     async def refresh(self, refresh_token: str | None, user_agent: str | None) -> IssuedTokens:

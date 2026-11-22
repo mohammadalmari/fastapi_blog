@@ -123,9 +123,10 @@ stops at once.
 - A session has no absolute lifetime: each refresh grants a fresh 14 days.
 - `POST /auth/register` answers 409 for a taken email, which tells a stranger
   the address has an account. Closing that needs email verification, which is
-  planned for after v1.
-- There is no rate limiting on login yet. Argon2 runs on its own small thread
-  pool so a burst of logins cannot stall other requests, but it does not stop
-  password guessing.
+  out of scope for this version.
+- Login is rate limited by address (IPv6 by network), and an account is
+  locked for a while after ten failures; see [rate-limiting.md](rate-limiting.md). Argon2 also
+  runs on its own small thread pool, so a burst of logins cannot stall other
+  requests.
 - Lifetimes come from `FASTAPI_ACCESS_TOKEN_TTL_MINUTES` and
   `FASTAPI_REFRESH_TOKEN_TTL_DAYS`.

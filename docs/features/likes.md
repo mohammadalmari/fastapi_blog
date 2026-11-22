@@ -125,8 +125,9 @@ already given.
   0.1 s, 80 took 0.8 s (about 475 aborted attempts), 300 took 3.1 s (about
   3,000). Every request succeeded and the count was exact. The same burst
   slows whatever else writes that post, such as a new comment.
-- **No rate limit yet**, so nothing stops someone liking and unliking in a
-  loop to cause that load. Rate limiting comes with the hardening milestone.
+- **Liking and unliking are rate limited together**: 120 a minute for each
+  user (see [rate limiting](../concepts/rate-limiting.md)), so one account
+  can't cause that load in a loop. Many accounts still can.
 - **Deleting a post removes every like under it in one transaction**, like
   its comments. A post with a very large number of likes could exceed
   MongoDB's transaction time limit, and the delete would then fail.

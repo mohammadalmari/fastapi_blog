@@ -8,6 +8,7 @@ from bson import ObjectId
 from app.core.database import Database, Session, in_transaction
 from app.core.errors import ConflictError, NotFoundError
 from app.core.pagination import CursorPosition
+from app.core.ttl import Remembered
 from app.posts.models import Post, PostStatus, PostView, TagCount
 from app.posts.policy import may_see
 from app.posts.repository import PostRepository, SlugUnavailableError
@@ -42,6 +43,7 @@ class PostService:
         users: UserRepository,
         on_delete: Sequence[PostCleanup] = (),
         liked: LikedLookup | None = None,
+        tag_cache: Remembered[list[TagCount]] | None = None,
     ) -> None:
         self._db = db
         self._posts = posts
@@ -54,6 +56,11 @@ class PostService:
         # Likes are another feature's too. It registers how to ask "which of
         # these has this user liked?"; with nothing registered, none are.
         self._liked = liked
+        # Counting tags reads every published post. The list is the same for
+        # everyone and changes slowly, so it is remembered for a short while.
+        # The service is built for each request, so what is remembered lives
+        # outside it and is handed in.
+        self._tag_cache = tag_cache
 
     # --- reading ------------------------------------------------------------
 
@@ -100,7 +107,10 @@ class PostService:
         return [PostView(post, principal.user, post.id in liked) for post in posts], next_cursor
 
     async def tags(self) -> list[TagCount]:
-        return await self._posts.tag_counts()
+        """The most used tags. May be a little behind: see ``tags_cache_seconds``."""
+        if self._tag_cache is None:
+            return await self._posts.tag_counts()
+        return await self._tag_cache.get(self._posts.tag_counts)
 
     # --- writing ------------------------------------------------------------
 

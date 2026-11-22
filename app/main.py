@@ -17,12 +17,39 @@ from app.core.settings import Settings, get_settings
 from app.core.settings.environment import API_PREFIX
 from app.core.settings.security import MAX_BODY_SIZE
 from app.core.storage import LocalStorage
+from app.core.ttl import Remembered
 from app.likes.router import router as likes_router
 from app.posts.router import my_posts_router, posts_router, tags_router
 from app.rbac.router import permissions_router, roles_router
 from app.rbac.sync import sync_rbac
 from app.users.router import media_router
 from app.users.router import router as users_router
+
+API_VERSION = "1.0.0"
+
+API_DESCRIPTION = """
+Log in with `POST /api/v1/auth/login` (or the **Authorize** button) and send
+the access token as `Authorization: Bearer <token>`.
+
+- Lists are paged by cursor: pass a page's `next_cursor` as `cursor`.
+- Errors are `{"detail": "..."}`; invalid input is a 422 with one entry per problem.
+- A `429` means "too often": wait the number of seconds in `Retry-After`.
+- Responses carry `X-Request-ID`; quote it when reporting a problem.
+"""
+
+# The order here is the order of the sections in /docs.
+API_TAGS = [
+    {"name": "auth", "description": "Signing up, logging in, and sessions."},
+    {
+        "name": "users",
+        "description": "Your account and profile, avatars, and administering accounts.",
+    },
+    {"name": "roles", "description": "Roles, and the catalog of permissions they are built from."},
+    {"name": "posts", "description": "Posts, drafts, publishing, the feed and tags."},
+    {"name": "comments", "description": "Comments on posts, and one level of replies."},
+    {"name": "likes", "description": "Likes on posts and comments."},
+    {"name": "health", "description": "Whether the app and its database are up."},
+]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -46,6 +73,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # MongoDB is unreachable the app fails to start instead of
             # failing on the first request.
             await db.command("ping")
+            # The same idea for uploads: a folder that can't be written to
+            # stops the app here, not the first person to upload a picture.
+            await app.state.storage.check()
             await ensure_indexes(db)
             # The permission catalog and the two system roles (see rbac.sync).
             await sync_rbac(db)
@@ -59,6 +89,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="FastAPI Blog",
+        summary="A multi-user blog API with roles and permissions an administrator manages.",
+        description=API_DESCRIPTION,
+        version=API_VERSION,
+        openapi_tags=API_TAGS,
         debug=settings.debug,
         lifespan=lifespan,
         # Without the schema there are no interactive docs either, so this one
@@ -72,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Where `StorageDep` finds it. Swap the class here to keep uploads
     # somewhere other than this machine's disk.
     app.state.storage = LocalStorage(settings.media_dir)
+    app.state.tag_cache = Remembered(settings.tags_cache_seconds)
 
     install_security(app, settings)
     install_error_handlers(app)

@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import Field, ValidationInfo, field_validator
 
 from .environment import API_PREFIX, CommaSeparated, EnvironmentSettings, is_debug
+from .limits import RateLimit
 
 # ---------------------------------------------------------------------------
 # Passwords
@@ -36,6 +37,35 @@ PASSWORD_HASH_CONCURRENCY = 4
 # Default cap on a whole request body; FastAPI answers 413 beyond it. Routes
 # that accept uploads raise it for themselves with their own `max_body_size`.
 MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MiB
+
+# ---------------------------------------------------------------------------
+# Rate limits (see app.core.ratelimit)
+# ---------------------------------------------------------------------------
+# Each is "at most this many, in this many seconds, per caller". They are set
+# well above what a person does and well below what a script can: nobody
+# honest should ever meet one.
+
+_MINUTE = 60
+_HOUR = 60 * _MINUTE
+
+# Logging in. Every attempt counts against the address it comes from, which
+# stops one machine trying many accounts.
+LOGIN_PER_ADDRESS = RateLimit("login-address", 30, 5 * _MINUTE)
+# Failed attempts also count against the account, wherever they come from,
+# which stops many machines trying one account. The price: someone who knows
+# your email can keep you from logging in, fifteen minutes at a time, by
+# failing on purpose. Ten slow guesses a quarter of an hour is the trade.
+LOGIN_FAILURES_PER_ACCOUNT = RateLimit("login-account", 10, 15 * _MINUTE)
+# Signing up, per address: accounts are what every other limit counts by.
+REGISTER_PER_ADDRESS = RateLimit("register", 10, _HOUR)
+# Changing a password asks for the current one, so it is a way to guess it
+# for whoever holds a stolen token.
+PASSWORD_CHANGE_PER_USER = RateLimit("password-change", 5, 15 * _MINUTE)
+# Writing. Each of these is a transaction on a shared document, or a picture
+# to decode.
+COMMENTS_PER_USER = RateLimit("comments", 30, _MINUTE)
+LIKES_PER_USER = RateLimit("likes", 120, _MINUTE)
+AVATARS_PER_USER = RateLimit("avatars", 10, _HOUR)
 
 # ---------------------------------------------------------------------------
 # Avatars
@@ -98,6 +128,10 @@ STRICT_TRANSPORT_SECURITY = f"max-age={HSTS_SECONDS}; includeSubDomains; preload
 
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CORS_ALLOW_HEADERS = ["Authorization", "Content-Type"]
+# Response headers a page on another origin may read. A browser hides all but
+# a few by default, and a frontend needs these two: how long to wait after a
+# 429, and the id to quote when reporting a problem.
+CORS_EXPOSE_HEADERS = ["Retry-After", "X-Request-ID"]
 
 # ---------------------------------------------------------------------------
 # Refresh-token cookie

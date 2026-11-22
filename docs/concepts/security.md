@@ -45,14 +45,24 @@ environment variables: there is no reason for a deployment to weaken them.
 
 ### The middleware, outermost first
 
-1. **Security headers**, added to every response, including errors and
+1. **Request id**: gives the request its id, for the response header and
+   for every log line written further in.
+2. **Security headers**, added to every response, including errors and
    redirects: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
    `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin`,
    a Content-Security-Policy, and `Strict-Transport-Security` in production.
-2. **Trusted host**: a request whose `Host` header isn't in
+3. **Trusted host**: a request whose `Host` header isn't in
    `FASTAPI_ALLOWED_HOSTS` gets a 400.
-3. **HTTPS redirect**, in production only.
-4. **CORS**, closest to the app so its headers are on error responses too.
+4. **HTTPS redirect**, in production only.
+5. **CORS**, close to the app so its headers are on error responses too.
+6. **Unhandled errors**, innermost: an error nothing else handled is logged
+   with its traceback and answered with a plain 500. FastAPI would do both
+   itself, but from outside every layer above, so its 500 would leave without
+   the security headers or the request id, and the traceback would be logged
+   after the id was gone. That is the one request the id is for.
+
+One response still bypasses these layers: the 413 for a body over the size
+limit, which FastAPI sends before any middleware runs.
 
 The Content-Security-Policy is `default-src 'none'; frame-ancestors 'none'`:
 this is a JSON API and nothing it returns should load anything. The
@@ -122,8 +132,25 @@ Other errors are `{"detail": "..."}`. Services raise the classes in
 ### The security log
 
 Events worth an operator's attention go to the `app.security` logger: failed
-logins, refresh-token reuse, rejected origins, a missing default role. In
-production it is written to `security.log`.
+logins, a locked account, refresh-token reuse, rejected origins, a wrong
+current password, a missing default role. In production it is written to
+`security.log`.
+
+### Request ids and log format
+
+Every request gets an id. It is in the response's `X-Request-ID` header and
+on every log line written while that request was handled, so the lines for
+one request can be found among everyone else's. An id sent by a proxy in
+front is kept if it looks like one; anything else is replaced, because the
+header is the client's to write and ends up in the logs.
+
+In development a log line is a sentence. In production it is one JSON object
+per line (`time`, `level`, `logger`, `message`, `request_id`, and
+`exception` for an error), which a log collector can filter by field. That
+includes the server's own lines: uvicorn's handlers are removed in
+production and its records pass through the app's. JSON
+also escapes line breaks, so text a user got into a message can't be made to
+look like a second entry.
 
 ## What a first-time reader should know
 
@@ -132,7 +159,8 @@ production it is written to `security.log`.
 - In debug mode, CORS allows every origin, and with
   `FASTAPI_CORS_ALLOW_CREDENTIALS=true` it does so with credentials too. That
   is only for local development against a frontend on another port.
-- There is no rate limiting yet; it is planned for the hardening milestone.
+- Guessing, expensive writes and sign-up are rate limited; reads are not.
+  [rate-limiting.md](rate-limiting.md) has the table and the reasons.
 - Malformed JSON gets a 422 before the login check, because FastAPI parses
   the body before resolving dependencies. Nothing is written or revealed.
 - Never reuse FastAPI's own variables `FASTAPI_ENV`, `FASTAPI_PUBLIC_URL` or

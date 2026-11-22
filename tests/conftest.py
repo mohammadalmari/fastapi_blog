@@ -145,6 +145,9 @@ def _build_settings(
         "log_dir": scratch / "logs",
         # Uploaded avatars, likewise.
         "media_dir": scratch / "media",
+        # Tests share one app. A list remembered by it would be one test's
+        # tags showing up in the next.
+        "tags_cache_seconds": 0,
         **overrides,
     }
     # `_env_file=None`: apart from the database URL, ignore the developer's

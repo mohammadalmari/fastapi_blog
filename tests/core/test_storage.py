@@ -1,10 +1,14 @@
 """LocalStorage against a temporary folder. No app."""
 
+import os
 from pathlib import Path
 
 import pytest
+from asgi_lifespan import LifespanManager
 
+from app.core.settings import Settings
 from app.core.storage import LocalStorage
+from app.main import create_app
 
 pytestmark = pytest.mark.anyio
 
@@ -71,3 +75,39 @@ async def test_a_write_that_fails_leaves_nothing_behind(
         await storage.save("avatars/a.webp", b"picture")
 
     assert list((tmp_path / "avatars").iterdir()) == []
+
+
+async def test_a_usable_folder_passes_the_startup_check_and_keeps_nothing(tmp_path: Path) -> None:
+    storage = LocalStorage(tmp_path / "media")
+
+    await storage.check()
+
+    assert list((tmp_path / "media").iterdir()) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root may write anywhere")
+async def test_a_folder_that_cannot_be_written_to_fails_the_startup_check(tmp_path: Path) -> None:
+    """A mounted volume owned by another user: found at startup, not at the first upload."""
+    locked = tmp_path / "media"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        with pytest.raises(RuntimeError, match="FASTAPI_MEDIA_DIR"):
+            await LocalStorage(locked).check()
+    finally:
+        locked.chmod(0o700)
+
+
+async def test_the_app_refuses_to_start_when_its_media_folder_is_unusable(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check exists; this proves starting the app runs it."""
+
+    async def unusable(self: LocalStorage) -> None:
+        raise RuntimeError("The media folder can't be written to")
+
+    monkeypatch.setattr(LocalStorage, "check", unusable)
+
+    with pytest.raises(RuntimeError, match="media folder"):
+        async with LifespanManager(create_app(settings)):
+            pass

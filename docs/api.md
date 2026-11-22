@@ -9,6 +9,10 @@ FastAPI from the code, so it cannot go out of date:
 - `/redoc`: the same as a readable document
 - `/openapi.json`: the schema, for generating clients
 
+Every response carries `X-Request-ID`: quote it when reporting a problem.
+Some routes are [rate limited](concepts/rate-limiting.md) and answer 429 with
+a `Retry-After` header when used too often.
+
 Request and response shapes, field rules and error codes are there. All three
 are served in debug mode only.
 
@@ -72,7 +76,7 @@ See [features/posts.md](features/posts.md).
 | `POST /api/v1/posts/{post_id}/publish` | `posts:publish:own` on your post, or `posts:publish:any` | Make a post public |
 | `POST /api/v1/posts/{post_id}/unpublish` | `posts:publish:own` on your post, or `posts:publish:any` | Turn it back into a draft |
 | `GET /api/v1/users/me/posts` | Login | The caller's own posts, drafts included; `status` filters |
-| `GET /api/v1/tags` | Nothing | The 100 most used tags on published posts, with their counts |
+| `GET /api/v1/tags` | Nothing | The 100 most used tags on published posts, with their counts; may be up to two minutes behind |
 
 Lists are paged by cursor: pass the `next_cursor` of one page as `cursor` to
 get the next, until it is null. A cursor belongs to the list that issued it.

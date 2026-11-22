@@ -2,12 +2,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Response, status
 
+from app.auth.dependencies import limit_by_user
 from app.comments.dependencies import CommentId, CommentServiceDep
 from app.comments.models import CommentView
 from app.comments.schemas import CommentCreate, CommentPublic, CommentUpdate
 from app.core.caching import varies_by_login
 from app.core.errors import error_responses
 from app.core.pagination import Page, PageParamsDep
+from app.core.settings.security import COMMENTS_PER_USER
 from app.posts.dependencies import PostId
 from app.rbac.dependencies import (
     LOGIN_OPTIONAL,
@@ -35,7 +37,10 @@ _CREATE_ERRORS = error_responses(
     status.HTTP_403_FORBIDDEN,
     status.HTTP_404_NOT_FOUND,
     status.HTTP_409_CONFLICT,
+    status.HTTP_429_TOO_MANY_REQUESTS,
 )
+# One allowance for comments and replies together.
+_WRITE_LIMIT = [Depends(limit_by_user(COMMENTS_PER_USER))]
 
 
 def _body(view: CommentView) -> dict[str, Any]:
@@ -88,6 +93,7 @@ async def list_comments(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=CommentPublic,
+    dependencies=_WRITE_LIMIT,
     responses=_CREATE_ERRORS,
 )
 async def create_comment(
@@ -124,6 +130,7 @@ async def list_replies(
     "/{comment_id}/replies",
     status_code=status.HTTP_201_CREATED,
     response_model=CommentPublic,
+    dependencies=_WRITE_LIMIT,
     responses=_CREATE_ERRORS,
 )
 async def create_reply(

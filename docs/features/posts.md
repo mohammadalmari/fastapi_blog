@@ -135,13 +135,18 @@ longer edit them.
 - **Lists carry summaries.** The feed returns the excerpt, not the content.
 - **Authors are fetched once per page**, not once per post. A post whose
   author's account is gone is shown with `author: null`.
+- **The list of tags is remembered for a minute** (`FASTAPI_TAGS_CACHE_SECONDS`,
+  0 to switch it off). Counting tags reads every published post, and the
+  answer is the same for everyone. Each worker keeps its own copy, so a new
+  tag can take up to a minute to appear; the response's `Cache-Control`
+  lets browsers and proxies keep it for another, so two minutes at most. `Remembered` in
+  `app/core/ttl.py` does it, and lets only one request recount when the
+  minute is up.
 - **Markdown is not rendered or cleaned here.** Clients render it, and must
   treat title, excerpt and content as untrusted text.
 
-## Not here yet
+## Worth knowing
 
-- `/tags` returns the 100 most used tags and counts them afresh on every
-  request. It is a candidate for caching.
 - A deactivated author's posts stay, under their name; only the author's
   profile page goes. Hiding them is a moderator's decision, post by post.
 
@@ -150,5 +155,7 @@ longer edit them.
 `tests/posts/test_posts.py` over HTTP, including the tests written from an
 attacker's side and one test per permission held alone.
 `tests/posts/test_post_rules.py` for slugs, tags, excerpts and field limits.
+`tests/posts/test_tags_cache.py` for the remembered list of tags, on an app
+built with remembering switched on.
 Fixtures for authors, an editor and ready-made posts are in
 `tests/conftest.py`.

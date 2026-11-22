@@ -3,7 +3,7 @@
 ## What is this?
 
 How the tests are set up, the rules for writing them, and how the suite is
-kept fast. About 700 tests run in about eighteen seconds.
+kept fast. About 760 tests run in about twenty seconds.
 
 ## Why these rules exist
 

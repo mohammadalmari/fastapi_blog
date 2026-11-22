@@ -1,5 +1,6 @@
 import logging
-from typing import Annotated
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -9,9 +10,11 @@ from app.auth.service import AuthService
 from app.core.database import DbDep
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.logs import SECURITY_LOGGER
+from app.core.ratelimit import RateLimiterDep
 from app.core.security import decode_access_token
 from app.core.settings import SettingsDep
 from app.core.settings.environment import API_PREFIX
+from app.core.settings.limits import RateLimit
 from app.rbac.providers import RoleRepositoryDep
 from app.users.dependencies import UserRepositoryDep
 from app.users.models import User
@@ -32,9 +35,10 @@ async def get_auth_service(
     users: UserRepositoryDep,
     refresh_tokens: Annotated[RefreshTokenRepository, Depends(get_refresh_token_repository)],
     roles: RoleRepositoryDep,
+    limiter: RateLimiterDep,
     settings: SettingsDep,
 ) -> AuthService:
-    return AuthService(users, refresh_tokens, roles, settings)
+    return AuthService(users, refresh_tokens, roles, limiter, settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
@@ -89,6 +93,24 @@ async def get_optional_user(
 
 
 OptionalUserDep = Annotated[User | None, Depends(get_optional_user)]
+
+
+def limit_by_user(rule: RateLimit) -> Callable[..., Coroutine[Any, Any, None]]:
+    """
+    A dependency that counts the request against the logged-in user::
+
+        @router.post("", dependencies=[Depends(limit_by_user(COMMENTS_PER_USER))])
+
+    By user rather than by address wherever there is a login: an address may
+    be shared by a whole office, and one person can have many addresses. The
+    user is the one the route's own login check finds; FastAPI works a
+    dependency out once per request, however many places ask for it.
+    """
+
+    async def dependency(user: CurrentUserDep, limiter: RateLimiterDep) -> None:
+        await limiter.hit(rule, str(user.id))
+
+    return dependency
 
 
 async def verify_origin(

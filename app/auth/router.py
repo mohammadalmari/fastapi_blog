@@ -3,15 +3,19 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, Header, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.auth.dependencies import AuthServiceDep, CurrentUserDep, verify_origin
+from app.auth.dependencies import AuthServiceDep, CurrentUserDep, limit_by_user, verify_origin
 from app.auth.schemas import ChangePasswordRequest, RegisterRequest, TokenResponse
 from app.auth.service import IssuedTokens
 from app.core.errors import error_responses
+from app.core.ratelimit import limit_by_address
 from app.core.settings import Settings, SettingsDep
 from app.core.settings.security import (
+    LOGIN_PER_ADDRESS,
+    PASSWORD_CHANGE_PER_USER,
     REFRESH_COOKIE_NAME,
     REFRESH_COOKIE_PATH,
     REFRESH_COOKIE_SAMESITE,
+    REGISTER_PER_ADDRESS,
 )
 from app.users.models import User
 from app.users.schemas import UserAccount
@@ -64,14 +68,19 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
     "/register",
     status_code=status.HTTP_201_CREATED,
     response_model=UserAccount,
-    responses=error_responses(status.HTTP_409_CONFLICT),
+    dependencies=[Depends(limit_by_address(REGISTER_PER_ADDRESS))],
+    responses=error_responses(status.HTTP_409_CONFLICT, status.HTTP_429_TOO_MANY_REQUESTS),
 )
 async def register(data: RegisterRequest, service: AuthServiceDep) -> User:
     """Create an account. Log in afterwards to get tokens."""
     return await service.register(data)
 
 
-@router.post("/login", responses=error_responses(status.HTTP_401_UNAUTHORIZED))
+@router.post(
+    "/login",
+    dependencies=[Depends(limit_by_address(LOGIN_PER_ADDRESS))],
+    responses=error_responses(status.HTTP_401_UNAUTHORIZED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 async def login(
     form: LoginForm,
     response: Response,
@@ -137,7 +146,10 @@ async def logout_all(
 @password_router.post(
     "",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses(status.HTTP_401_UNAUTHORIZED),
+    # Every attempt counts, right or wrong: this route is a way to guess the
+    # current password for whoever holds a stolen token.
+    dependencies=[Depends(limit_by_user(PASSWORD_CHANGE_PER_USER))],
+    responses=error_responses(status.HTTP_401_UNAUTHORIZED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
 async def change_password(
     data: ChangePasswordRequest,

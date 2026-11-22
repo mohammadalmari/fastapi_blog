@@ -39,6 +39,14 @@ class ServicesSettings(EnvironmentSettings):
     media_dir: Path = ROOT_DIR / "media"
 
     # -----------------------------------------------------------------------
+    # Caching
+    # -----------------------------------------------------------------------
+
+    # How long each worker remembers the list of tags before counting them
+    # again. 0 counts on every request.
+    tags_cache_seconds: int = Field(default=60, ge=0)
+
+    # -----------------------------------------------------------------------
     # Logging (see app.core.logs for how these are used)
     # -----------------------------------------------------------------------
 

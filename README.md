@@ -14,7 +14,7 @@ PyMongo's async client.
 | | |
 | - | - |
 | [API overview](docs/api.md) | Every route and what it needs |
-| [Concepts](docs/concepts/index.md) | [Authentication](docs/concepts/authentication.md), [roles and permissions](docs/concepts/roles-and-permissions.md), [security](docs/concepts/security.md), [the database](docs/concepts/database.md), [testing](docs/concepts/testing.md) |
+| [Concepts](docs/concepts/index.md) | [Authentication](docs/concepts/authentication.md), [roles and permissions](docs/concepts/roles-and-permissions.md), [security](docs/concepts/security.md), [rate limiting](docs/concepts/rate-limiting.md), [the database](docs/concepts/database.md), [testing](docs/concepts/testing.md) |
 | [Features](docs/features/index.md) | One page per folder under `app/` |
 
 With the app running in debug mode, the full API reference is at
@@ -90,8 +90,14 @@ you list. [Security](docs/concepts/security.md) has the full table.
 uv run fastapi run --forwarded-allow-ips=<proxy ip>
 ```
 
-Behind a TLS-terminating proxy the server must trust the proxy's
-`X-Forwarded-Proto` header, or the HTTPS redirect loops forever.
+Behind a TLS-terminating proxy the server must trust the proxy's forwarded
+headers, for two reasons: without `X-Forwarded-Proto` the HTTPS redirect
+loops forever, and without `X-Forwarded-For` every visitor shares one
+[rate limit](docs/concepts/rate-limiting.md), because they all appear to come
+from the proxy. Name only the proxy's address.
+
+In production the logs are one JSON object per line, each with the id of the
+request it belongs to. The same id is in every response's `X-Request-ID`.
 
 As a container image:
 

@@ -129,8 +129,9 @@ someone had posted and deleted in a loop, and nothing could clean them up.
 - **Deleting a post removes all its comments in one transaction.** A post
   with a very large discussion could exceed MongoDB's transaction time limit,
   and the delete would then fail.
-- **No rate limit yet**, so nothing stops someone filling a post with
-  comments.
+- **Commenting is rate limited**: 30 comments and replies a minute for each
+  user (see [rate limiting](../concepts/rate-limiting.md)). That bounds what
+  one account can do to a post, not what many can.
 
 ## Likes
 

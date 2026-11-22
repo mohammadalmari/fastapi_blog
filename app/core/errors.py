@@ -57,6 +57,18 @@ class PayloadTooLargeError(AppError):
     status_code = status.HTTP_413_CONTENT_TOO_LARGE
 
 
+class TooManyRequestsError(AppError):
+    """The caller has done this too often for now (see ``core.ratelimit``)."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self, *, retry_after: int) -> None:
+        super().__init__("Too many requests. Try again later.")
+        # How many seconds until it is worth trying again. A well-behaved
+        # client waits that long instead of hammering.
+        self.headers = {"Retry-After": str(retry_after)}
+
+
 class FieldError(AppError):
     """
     A request field failed a check that Pydantic couldn't make, because it
