@@ -4,6 +4,9 @@ A multi-user blog API built with FastAPI, with authentication and
 authorization through roles and permissions that administrators manage while
 the app runs.
 
+- Live site: https://draftwork-blog.netlify.app/
+- Web frontend: [fastapi_blog-web](https://github.com/mohammadalmari/fastapi_blog-web)
+
 Built with [uv](https://docs.astral.sh/uv/) (dependencies),
 [ruff](https://docs.astral.sh/ruff/) (lint and format),
 [ty](https://docs.astral.sh/ty/) (types), pytest, and MongoDB through
